@@ -1,5 +1,3 @@
-Here’s a polished README.md for your GitHub repository based on the detailed breakdown you provided. It’s structured for clarity, includes usage instructions, and highlights your branding while keeping it professional yet approachable. I’ve also added sections for installation and contributing to make it GitHub-ready.
-
 🐝 BeeBrained’s MAT (Master Automation Tool) 🐝
 A versatile automation tool designed for efficiency and flexibility, perfect for repetitive tasks in games like Pet Simulator 99 (PS99) and beyond. Featuring hotkeys, GUI controls, coordinate clicking, WASD movement, and OpenCV template matching, this script is your go-to for automating window-based interactions.
 
