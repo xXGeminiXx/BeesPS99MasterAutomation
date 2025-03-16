@@ -215,9 +215,13 @@ class BeeAutomationCore:
         """Bring a window to the foreground."""
         try:
             time.sleep(0.05)
+            # First, check Roblox-specific windows
             windows = [hwnd for hwnd in self.find_roblox_windows() if window_title in win32gui.GetWindowText(hwnd)]
             if not windows:
-                windows = [hwnd for hwnd in win32gui.EnumWindows(lambda hwnd, l: l.append(hwnd) if window_title in win32gui.GetWindowText(hwnd) else None, [])]
+                # If not found, search all windows
+                l = []
+                win32gui.EnumWindows(lambda hwnd, extra: extra.append(hwnd) if window_title in win32gui.GetWindowText(hwnd) else None, l)
+                windows = l
             if not windows:
                 print(f"Window '{window_title}' not found.")
                 return False
@@ -341,6 +345,8 @@ class BeeGUI(tk.Tk):
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.update_status()
+        print("Config keys:", list(self.core.config.keys()))
+
 
     def update_status(self):
         """Update GUI status."""
