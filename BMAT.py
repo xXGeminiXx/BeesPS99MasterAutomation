@@ -1,7 +1,7 @@
 """
 🐝 BeeBrained's MAT (Master Automation Tool) 🐝
 Built for PS99 automation and beyond.
-Hotkeys, clicks, WASD, window switching, and CV2 template matching.
+Hotkeys, clicks, window switching, and CV2 template matching.
 By BeeBrained - https://www.youtube.com/@BeeBrained-PS99
 Hive hangout: https://discord.gg/QVncFccwek
 """
@@ -22,7 +22,7 @@ import win32con
 
 # ==================== CONFIG LOADING ====================
 def load_config(file_path="BeeConfig.ini") -> Dict[str, any]:
-    """Load the config or whip up a fresh one if it’s missing."""
+    """Load the config or create a default one if missing."""
     config = configparser.ConfigParser()
     if not config.read(file_path):
         print(f"Config '{file_path}' not found. Creating a default one.")
@@ -40,8 +40,6 @@ def load_config(file_path="BeeConfig.ini") -> Dict[str, any]:
             "click_delay_max": max(0.2, float(settings.get("click_delay_max", "1.5"))),
             "wait_before_click": max(0.1, float(settings.get("wait_before_click", "0.5"))),
             "wait_after_click": max(0.1, float(settings.get("wait_after_click", "0.5"))),
-            "move_duration_min": max(0.0, float(settings.get("move_duration_min", "0.05"))),
-            "move_duration_random": max(0.0, float(settings.get("move_duration_random", "0.1"))),
             "offset_range": max(0, int(settings.get("offset_range", "5"))),
             "timer_interval": max(1, int(settings.get("timer_interval", "60"))),
             "interaction_duration": max(1, int(settings.get("interaction_duration", "5"))),
@@ -75,14 +73,13 @@ def create_bee_config(file_path="BeeConfig.ini"):
     config = configparser.ConfigParser()
     config["BeeSettings"] = {
         "click_delay_min": "0.5", "click_delay_max": "1.5", "wait_before_click": "0.5",
-        "wait_after_click": "0.5", "move_duration_min": "0.05", "move_duration_random": "0.1",
-        "offset_range": "5", "timer_interval": "60", "interaction_duration": "5",
-        "match_threshold": "0.8", "use_greyscale": "1", "num_templates": "3",
-        "max_window_switches": "3", "window_stability_timeout": "5.0", "window_title": "Bee’s Target Zone",
-        "pause_key": "p", "start_key": "enter", "stop_key": "esc", "capture_key": "c",
-        "debounce_delay": "0.2", "poll_interval": "0.01", "pause_sleep": "0.1",
-        "retry_attempts": "3", "retry_delay": "0.1", "error_recovery_delay": "1.0",
-        "excluded_titles": "Account Manager",
+        "wait_after_click": "0.5", "offset_range": "5", "timer_interval": "60",
+        "interaction_duration": "5", "match_threshold": "0.8", "use_greyscale": "1",
+        "num_templates": "3", "max_window_switches": "3", "window_stability_timeout": "5.0",
+        "window_title": "Bee’s Target Zone", "pause_key": "p", "start_key": "enter",
+        "stop_key": "esc", "capture_key": "c", "debounce_delay": "0.2", "poll_interval": "0.01",
+        "pause_sleep": "0.1", "retry_attempts": "3", "retry_delay": "0.1",
+        "error_recovery_delay": "1.0", "excluded_titles": "Account Manager",
     }
     with open(file_path, "w") as config_file:
         config.write(config_file)
@@ -97,30 +94,16 @@ class BeeAutomationCore:
         self.templates = []
         self.window_switch_count = 0
         self.last_window = None
-        self.hotkeys = {}
         self.setup_hotkeys()
         pyautogui.FAILSAFE = True
 
     def setup_hotkeys(self):
         """Set up hotkeys with corresponding functions."""
-        # Define hotkeys for single keys only
-        self.hotkeys = {
-            self.config["start_key"]: self.start_automation,
-            self.config["stop_key"]: self.stop_automation,
-            self.config["pause_key"]: self.toggle_pause,
-            "w": lambda: self.move("w"),
-            "a": lambda: self.move("a"),
-            "s": lambda: self.move("s"),
-            "d": lambda: self.move("d"),
-        }
-
-        # Bind single-key hotkeys with pause check
-        for key, action in self.hotkeys.items():
-            keyboard.on_press_key(key, lambda e, a=action: a() if not self.paused else None)
-
-        # Separate binding for capture_key (e.g., 'c') with Shift check using add_hotkey
+        keyboard.add_hotkey(self.config["stop_key"], self.stop_automation)
+        keyboard.add_hotkey(self.config["start_key"], self.start_automation)
+        keyboard.add_hotkey(self.config["pause_key"], self.toggle_pause)
+        keyboard.add_hotkey(self.config["capture_key"], self.capture_coords)
         keyboard.add_hotkey(f"shift+{self.config['capture_key']}", self.capture_templates)
-        keyboard.on_press_key(self.config["capture_key"], lambda e: self.capture_coords() if not keyboard.is_pressed("shift") else None)
 
     def start_automation(self):
         """Start the automation loop."""
@@ -203,14 +186,6 @@ class BeeAutomationCore:
             return False
         print(f"Captured {len(self.templates)} templates. Press '{self.config['start_key']}' to start.")
         return True
-
-    def move(self, direction: str):
-        """Simulate WASD movement."""
-        if self.running and not self.paused:
-            keyboard.press(direction)
-            time.sleep(0.5)
-            keyboard.release(direction)
-            print(f"Moved {direction.upper()}.")
 
     def click_at(self, x: int, y: int):
         """Click at coordinates with randomized timing."""
@@ -337,7 +312,7 @@ class BeeGUI(tk.Tk):
         super().__init__()
         self.core = core
         self.title("🐝 BeeBrained’s MAT 🐝")
-        self.geometry("400x400")  # Bigger GUI for all buttons
+        self.geometry("400x300")
         self.attributes("-topmost", True)
 
         # Status Label
@@ -359,19 +334,6 @@ class BeeGUI(tk.Tk):
 
         self.capture_templates_btn = tk.Button(self, text="Capture Templates (Shift+C)", command=self.core.capture_templates)
         self.capture_templates_btn.pack(pady=5)
-
-        # Movement Buttons
-        self.move_w_btn = tk.Button(self, text="Move W", command=lambda: self.core.move("w"))
-        self.move_w_btn.pack(pady=5)
-
-        self.move_a_btn = tk.Button(self, text="Move A", command=lambda: self.core.move("a"))
-        self.move_a_btn.pack(pady=5)
-
-        self.move_s_btn = tk.Button(self, text="Move S", command=lambda: self.core.move("s"))
-        self.move_s_btn.pack(pady=5)
-
-        self.move_d_btn = tk.Button(self, text="Move D", command=lambda: self.core.move("d"))
-        self.move_d_btn.pack(pady=5)
 
         # Info Label
         self.info_label = tk.Label(self, text="By BeeBrained | YouTube: @BeeBrained-PS99 | Discord: QVncFccwek", font=("Arial", 8))
