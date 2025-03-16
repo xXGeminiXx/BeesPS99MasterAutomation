@@ -108,7 +108,7 @@ class BeeAutomationCore:
             self.config["stop_key"]: self.stop_automation,
             self.config["pause_key"]: self.toggle_pause,
             self.config["capture_key"]: self.capture_coords,
-            "shift+" + self.config["capture_key"]: self.capture_templates,
+            # Removed "shift+c" direct binding; handled with a combo check below
             "w": lambda: self.move("w"),
             "a": lambda: self.move("a"),
             "s": lambda: self.move("s"),
@@ -116,6 +116,8 @@ class BeeAutomationCore:
         }
         for key, action in self.hotkeys.items():
             keyboard.on_press_key(key, lambda e, a=action: a() if not self.paused else None)
+        # Handle Shift+C combo separately
+        keyboard.on_press_key(self.config["capture_key"], lambda e: self.capture_templates() if keyboard.is_pressed("shift") else self.capture_coords())
 
     def start_automation(self):
         """Start the automation loop."""
@@ -332,14 +334,12 @@ class BeeGUI(tk.Tk):
         super().__init__()
         self.core = core
         self.title("🐝 BeeBrained’s MAT 🐝")
-        self.geometry("400x400")  # Bigger GUI for all buttons
+        self.geometry("400x400")
         self.attributes("-topmost", True)
 
-        # Status Label
         self.status_label = tk.Label(self, text="Status: Idle", font=("Arial", 12))
         self.status_label.pack(pady=10)
 
-        # Control Buttons
         self.start_btn = tk.Button(self, text="Start (Enter)", command=self.core.start_automation)
         self.start_btn.pack(pady=5)
 
@@ -355,7 +355,6 @@ class BeeGUI(tk.Tk):
         self.capture_templates_btn = tk.Button(self, text="Capture Templates (Shift+C)", command=self.core.capture_templates)
         self.capture_templates_btn.pack(pady=5)
 
-        # Movement Buttons
         self.move_w_btn = tk.Button(self, text="Move W", command=lambda: self.core.move("w"))
         self.move_w_btn.pack(pady=5)
 
@@ -368,7 +367,6 @@ class BeeGUI(tk.Tk):
         self.move_d_btn = tk.Button(self, text="Move D", command=lambda: self.core.move("d"))
         self.move_d_btn.pack(pady=5)
 
-        # Info Label
         self.info_label = tk.Label(self, text="By BeeBrained | YouTube: @BeeBrained-PS99 | Discord: QVncFccwek", font=("Arial", 8))
         self.info_label.pack(pady=10)
 
