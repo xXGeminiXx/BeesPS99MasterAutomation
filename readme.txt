@@ -19,33 +19,12 @@ Installation
 Prerequisites:
 Python 3.8+
 Install required libraries:
-bash
-
-Collapse
-
-Wrap
-
-Copy
 pip install pyautogui keyboard pywin32 opencv-python numpy
 Download:
 Clone this repository or download the ZIP:
-bash
-
-Collapse
-
-Wrap
-
-Copy
 git clone https://github.com/BeeBrained/MAT.git
 Run:
 Navigate to the folder and execute:
-bash
-
-Collapse
-
-Wrap
-
-Copy
 python BeeMAT.py
 If BeeConfig.ini is missing, it’ll be created with default settings.
 Usage
@@ -61,7 +40,6 @@ Move: Use W, A, S, D or their buttons for manual movement (when running and not 
 Monitor: The GUI shows the current state (Idle/Running/Paused), coord count, and template count.
 Configuration
 The script uses BeeConfig.ini for settings. Key options include:
-
 click_delay_min/max: Timing range for clicks.
 match_threshold: Confidence level for template matching (0.0-1.0).
 timer_interval: Seconds between window cycles.
@@ -114,10 +92,3 @@ Shoutouts
 Big thanks to the PS99 community for inspiring this tool. Join the hive on Discord and check out my YouTube for more automation goodness!
 
 🐝 Happy automating, hive! 🐝
-
-Notes
-File Name: Save this as README.md in your repo root.
-Customization: I assumed a GitHub username (BeeBrained) and repo name (MAT)—update the clone URL if different.
-Enhancements: Included the optional “Clear Coords/Templates” idea as a suggestion without pushing it as mandatory.
-Tone: Kept it friendly and BeeBrained-branded with a few 🐝s, matching your style.
-This README should give users everything they need to get started while showcasing your work. Ready to publish—let me know if you want any final tweaks! 🐝
