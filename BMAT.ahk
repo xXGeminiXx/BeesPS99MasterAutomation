@@ -1,102 +1,71 @@
 #Requires AutoHotkey v2.0
 ; 🐝 BeeBrained's PS99 Clan Battle Automation Template 🐝
-; A modular baseline for automating Pet Simulator 99 clan battle events in Roblox.
-; By BeeBrained - https://www.youtube.com/@BeeBrained-PS99
-; Hive Hangout: https://discord.gg/QVncFccwek
 ; Last Updated: March 21, 2025
 
-; ================== How to Use ==================
-; 1. Place template images (e.g., hatch_button.png) in a "templates" folder in the script directory.
-; 2. Edit config.ini to customize settings (auto-created with defaults if missing).
-; 3. Launch the script, position your character in the event area, and press F1 to start.
-; 4. Update templates and config after game updates if UI or mechanics change.
-; 5. Ensure Gdip_All.ahk is in the script directory for template matching (download from AHK forums).
-; 6. Use responsibly—automation may violate game terms of service.
-
-; **Updating for New Events**
-; 1. Check the latest clan battle details on biggames.io or Pet Simulator Wiki.
-; 2. Capture new template images for changed UI elements and place them in the "templates" folder.
-; 3. Update the [Templates] section in config.ini with new template filenames.
-; 4. Adjust ENABLED_FUNCTIONS and KEY_SEQUENCE based on event requirements.
-; 5. If new functions are needed, add them to the script and include in ENABLED_FUNCTIONS.
-
-; ================== Global Variables ==================
 global running := false
 global paused := false
-global coords := []    ; Array for captured coordinates
+global coords := []
 global inventory_mode := false
 global pixelsearch_mode := false
 global checkstate_mode := false
 global myGUI
-global GdipToken      ; For Gdip library (template matching)
+global GdipToken
 global logFile := A_ScriptDir "\log.txt"
 global CONFIG_FILE := A_ScriptDir "\config.ini"
+global ENABLE_LOGGING := true  ; Default to true, configurable
 
-; ================== Default Config ==================
 defaultIni := "
 (
 [Timing]
-; Duration to interact with each window in milliseconds
 INTERACTION_DURATION=5000
-; Time between full cycles in milliseconds
 CYCLE_INTERVAL=60000
-; Minimum delay between clicks in milliseconds
 CLICK_DELAY_MIN=500
-; Maximum delay between clicks in milliseconds
 CLICK_DELAY_MAX=1500
 
 [Window]
-; Target window title
 WINDOW_TITLE=Roblox
-; Comma-separated list of titles to exclude
 EXCLUDED_TITLES=Roblox Account Manager
 
 [Features]
-; Whether to enable general actions (key sequences and coord clicks)
 ENABLE_GENERAL_ACTIONS=true
-; Comma-separated list of functions to enable (e.g., autoHatch, autoRebirth, autoCollect)
 ENABLED_FUNCTIONS=autoHatch,autoRebirth
 
 [Templates]
-; Template filenames for UI elements (update for new events)
 hatch_button=hatch_button.png
 rebirth_button=rebirth_button.png
 rebirth_ready=rebirth_ready.png
 upgrade_button=upgrade_button.png
+
+[PixelSearch]
+PIXELSEARCH_COLOR=0xFFFFFF
+PIXELSEARCH_VARIATION=10
+PIXELSEARCH_AREA=0,0," A_ScreenWidth "," A_ScreenHeight "
+
+[Logging]
+ENABLE_LOGGING=true
 )"
 
-; ================== Load Configuration ==================
 loadConfig() {
     global
-    ; Create config.ini with defaults if it doesn't exist
     if !FileExist(CONFIG_FILE) {
         FileAppend defaultIni, CONFIG_FILE
-        logAction("Created default config.ini at " CONFIG_FILE)
+        logAction("Created default config.ini")
     }
-
-    ; Load settings from config.ini with defaults as fallback
-    ; Timing
+    
     INTERACTION_DURATION := IniRead(CONFIG_FILE, "Timing", "INTERACTION_DURATION", 5000)
     CYCLE_INTERVAL := IniRead(CONFIG_FILE, "Timing", "CYCLE_INTERVAL", 60000)
     CLICK_DELAY_MIN := IniRead(CONFIG_FILE, "Timing", "CLICK_DELAY_MIN", 500)
     CLICK_DELAY_MAX := IniRead(CONFIG_FILE, "Timing", "CLICK_DELAY_MAX", 1500)
     
-    ; Window
     WINDOW_TITLE := IniRead(CONFIG_FILE, "Window", "WINDOW_TITLE", "Roblox")
     EXCLUDED_TITLES := StrSplit(IniRead(CONFIG_FILE, "Window", "EXCLUDED_TITLES", "Roblox Account Manager"), ",")
     
-    ; Features
     ENABLE_GENERAL_ACTIONS := IniRead(CONFIG_FILE, "Features", "ENABLE_GENERAL_ACTIONS", true)
     ENABLED_FUNCTIONS := StrSplit(IniRead(CONFIG_FILE, "Features", "ENABLED_FUNCTIONS", "autoHatch,autoRebirth"), ",")
     
-    ; Templates (configurable for new events)
     TEMPLATES := Map()
-    TEMPLATES["hatch_button"] := IniRead(CONFIG_FILE, "Templates", "hatch_button", "hatch_button.png")
-    TEMPLATES["rebirth_button"] := IniRead(CONFIG_FILE, "Templates", "rebirth_button", "rebirth_button.png")
-    TEMPLATES["rebirth_ready"] := IniRead(CONFIG_FILE, "Templates", "rebirth_ready", "rebirth_ready.png")
-    TEMPLATES["upgrade_button"] := IniRead(CONFIG_FILE, "Templates", "upgrade_button", "upgrade_button.png")
+    updateTemplates()  ; Auto-detect templates from folder
     
-    ; Hardcoded defaults (not in config.ini for simplicity, but can be moved if desired)
     START_KEY := "F1"
     STOP_KEY := "F2"
     PAUSE_KEY := "p"
@@ -104,9 +73,13 @@ loadConfig() {
     INVENTORY_KEY := "F3"
     PIXELSEARCH_KEY := "F4"
     CHECKSTATE_KEY := "F5"
-    PIXELSEARCH_COLOR := "0xFFFFFF"
-    PIXELSEARCH_VARIATION := 10
-    PIXELSEARCH_AREA := [0, 0, A_ScreenWidth, A_ScreenHeight]
+    PIXELSEARCH_COLOR := IniRead(CONFIG_FILE, "PixelSearch", "PIXELSEARCH_COLOR", "0xFFFFFF")
+    PIXELSEARCH_VARIATION := IniRead(CONFIG_FILE, "PixelSearch", "PIXELSEARCH_VARIATION", 10)
+    area := StrSplit(IniRead(CONFIG_FILE, "PixelSearch", "PIXELSEARCH_AREA", "0,0," A_ScreenWidth "," A_ScreenHeight), ",")
+    PIXELSEARCH_AREA := [area[1], area[2], area[3], area[4]]  ; Cached at init
+    
+    ENABLE_LOGGING := IniRead(CONFIG_FILE, "Logging", "ENABLE_LOGGING", true)
+    
     MOVEMENT_PATTERNS := Map(
         "circle", [["w", 500, 1], ["d", 300, 1], ["s", 500, 1], ["a", 300, 1]],
         "zigzag", [["w", 400, 1], ["d", 200, 1], ["w", 400, 1], ["a", 200, 1]],
@@ -116,30 +89,74 @@ loadConfig() {
     TEMPLATE_FOLDER := A_ScriptDir "\templates"
 }
 
-; ================== Gdip Setup ==================
-#Include Gdip_All.ahk
-initGdip() {
-    global GdipToken
-    if !GdipToken := Gdip_Startup() {
-        MsgBox "Failed to initialize Gdip library. Template matching will not work."
+updateTemplates() {
+    global TEMPLATES, TEMPLATE_FOLDER
+    ; Load from config first
+    TEMPLATES["hatch_button"] := IniRead(CONFIG_FILE, "Templates", "hatch_button", "hatch_button.png")
+    TEMPLATES["rebirth_button"] := IniRead(CONFIG_FILE, "Templates", "rebirth_button", "rebirth_button.png")
+    TEMPLATES["rebirth_ready"] := IniRead(CONFIG_FILE, "Templates", "rebirth_ready", "rebirth_ready.png")
+    TEMPLATES["upgrade_button"] := IniRead(CONFIG_FILE, "Templates", "upgrade_button", "upgrade_button.png")
+    ; Auto-detect new templates in folder
+    Loop Files, TEMPLATE_FOLDER "\*.png" {
+        name := StrReplace(A_LoopFileName, ".png", "")
+        if !TEMPLATES.Has(name) {
+            TEMPLATES[name] := A_LoopFileName
+            logAction("Auto-detected new template: " A_LoopFileName)
+        }
     }
 }
 
-; ================== GUI Setup ==================
+try {
+    #Include Gdip_All.ahk
+} catch {
+    logAction("Failed to include Gdip_All.ahk - template matching unavailable")
+    MsgBox "Gdip_All.ahk not found. Template matching will not work."
+}
+
+initGdip() {
+    global GdipToken
+    if !GdipToken := Gdip_Startup() {
+        logAction("Gdip_Startup failed - template matching unavailable")
+        MsgBox "Failed to initialize Gdip library."
+        return false
+    }
+    return true
+}
+
 setupGUI() {
-    global myGUI
+    global myGUI, ENABLED_FUNCTIONS
     myGUI := Gui("+AlwaysOnTop", "🐝 BeeBrained’s PS99 Clan Battle Template 🐝")
     myGUI.Add("Text", "x10 y10 w380 h20", "🐝 Use " START_KEY " to start, " STOP_KEY " to stop, Esc to exit 🐝")
     myGUI.Add("Text", "x10 y40 w380 h20", "Status: Idle").Name := "Status"
     myGUI.Add("Text", "x10 y60 w380 h20", "Coords Captured: 0").Name := "Coords"
     myGUI.Add("Text", "x10 y80 w380 h20", "PixelSearch: OFF").Name := "PixelSearchStatus"
     myGUI.Add("Text", "x10 y100 w380 h20", "GameState Check: OFF").Name := "GameStateStatus"
-    myGUI.Add("Button", "x10 y120 w120 h30", "Run Movement").OnEvent("Click", runMovementPattern)
-    myGUI.Add("Button", "x140 y120 w120 h30", "Reload Config").OnEvent("Click", loadConfigFromFile)
-    myGUI.Show("x0 y0 w400 h150")
+    myGUI.Add("Text", "x10 y120 w380 h20", "Active Windows: 0").Name := "WindowCount"
+    myGUI.Add("Button", "x10 y140 w120 h30", "Run Movement").OnEvent("Click", runMovementPattern)
+    myGUI.Add("Button", "x140 y140 w120 h30", "Reload Config").OnEvent("Click", loadConfigFromFile)
+    ; Add checkboxes for functions
+    yPos := 180
+    for func in ENABLED_FUNCTIONS {
+        myGUI.Add("Checkbox", "x10 y" yPos " w120 h20 v" func " Checked1", func).OnEvent("Click", toggleFunction)
+        yPos += 20
+    }
+    myGUI.Show("x0 y0 w400 h" (yPos + 20))
 }
 
-; ================== Hotkeys ==================
+toggleFunction(ctrl, *) {
+    global ENABLED_FUNCTIONS
+    funcName := ctrl.Name
+    if ctrl.Value {
+        if !ENABLED_FUNCTIONS.Contains(funcName) {
+            ENABLED_FUNCTIONS.Push(funcName)
+        }
+    } else {
+        if idx := ENABLED_FUNCTIONS.IndexOf(funcName) {
+            ENABLED_FUNCTIONS.RemoveAt(idx)
+        }
+    }
+}
+
 Hotkey START_KEY, startAutomation
 Hotkey STOP_KEY, stopAutomation
 Hotkey PAUSE_KEY, togglePause
@@ -149,7 +166,6 @@ Hotkey PIXELSEARCH_KEY, togglePixelSearchMode
 Hotkey CHECKSTATE_KEY, toggleCheckStateMode
 Esc::ExitApp
 
-; ================== Core Functions ==================
 startAutomation(*) {
     global running, paused
     if running
@@ -197,8 +213,8 @@ toggleInventoryMode(*) {
 
 togglePixelSearchMode(*) {
     global pixelsearch_mode
-    pixelsearch_mode := !pixelsearch_mode
     myGUI["PixelSearchStatus"].Text := "PixelSearch: " (pixelsearch_mode ? "ON" : "OFF")
+    pixelsearch_mode := !pixelsearch_mode
     ToolTip "PixelSearch Mode: " (pixelsearch_mode ? "ON" : "OFF"), 0, 100
     Sleep 1000
     ToolTip
@@ -225,6 +241,7 @@ findRobloxWindows() {
             windows.Push(hwnd)
         }
     }
+    myGUI["WindowCount"].Text := "Active Windows: " windows.Length
     return windows
 }
 
@@ -237,14 +254,10 @@ hasExcludedTitle(title) {
 }
 
 bringToFront(hwnd) {
-    try {
-        WinRestore(hwnd)
-        WinActivate(hwnd)
-        WinWaitActive(hwnd, , 2)
-        return true
-    } catch {
-        return false
-    }
+    WinRestore(hwnd)
+    WinActivate(hwnd)
+    WinWaitActive(hwnd, , 2)
+    return ErrorLevel = 0
 }
 
 pressKey(key, duration, repeat) {
@@ -252,7 +265,7 @@ pressKey(key, duration, repeat) {
         Send "{" key " down}"
         Sleep duration
         Send "{" key " up}"
-        Sleep Random(50, 150)  ; Random delay for human-like behavior
+        Sleep Random(50, 150)
     }
 }
 
@@ -277,24 +290,37 @@ inventoryClick() {
 }
 
 pixelSearchColor(&FoundX, &FoundY) {
-    try {
-        PixelSearch &FoundX, &FoundY, PIXELSEARCH_AREA[1], PIXELSEARCH_AREA[2], PIXELSEARCH_AREA[3], PIXELSEARCH_AREA[4], PIXELSEARCH_COLOR, PIXELSEARCH_VARIATION
-        return true
-    } catch {
+    PixelSearch &FoundX, &FoundY, PIXELSEARCH_AREA[1], PIXELSEARCH_AREA[2], PIXELSEARCH_AREA[3], PIXELSEARCH_AREA[4], PIXELSEARCH_COLOR, PIXELSEARCH_VARIATION
+    if ErrorLevel {
+        logAction("PixelSearch failed for color " PIXELSEARCH_COLOR " in area " PIXELSEARCH_AREA[1] "," PIXELSEARCH_AREA[2] "-" PIXELSEARCH_AREA[3] "," PIXELSEARCH_AREA[4])
         return false
     }
+    return true
 }
 
 templateMatch(templateName, &FoundX, &FoundY) {
-    if !FileExist(TEMPLATE_FOLDER "\" TEMPLATES[templateName]) {
-        logAction("Template " templateName " not found!")
+    templatePath := TEMPLATE_FOLDER "\" TEMPLATES[templateName]
+    if !FileExist(templatePath) {
+        logAction("Template not found: " templatePath)
         return false
     }
     pBitmapScreen := Gdip_BitmapFromScreen()
-    pBitmapTemplate := Gdip_CreateBitmapFromFile(TEMPLATE_FOLDER "\" TEMPLATES[templateName])
+    if !pBitmapScreen {
+        logAction("Gdip_BitmapFromScreen failed for template: " templateName)
+        return false
+    }
+    pBitmapTemplate := Gdip_CreateBitmapFromFile(templatePath)
+    if !pBitmapTemplate {
+        logAction("Gdip_CreateBitmapFromFile failed for: " templatePath)
+        Gdip_DisposeImage(pBitmapScreen)
+        return false
+    }
     result := Gdip_ImageSearch(pBitmapScreen, pBitmapTemplate, &FoundX, &FoundY, 0, 0, 0, 0, 0.9)
     Gdip_DisposeImage(pBitmapScreen)
     Gdip_DisposeImage(pBitmapTemplate)
+    if !result {
+        logAction("Template match failed for: " templateName)
+    }
     return result && FoundX != "" && FoundY != ""
 }
 
@@ -310,20 +336,31 @@ runMovementPattern(*) {
     ToolTip
 }
 
-; ================== Automation Functions ==================
 autoHatch() {
-    detectUIElement("hatch_button")
+    FoundX := 0, FoundY := 0
+    if templateMatch("hatch_button", &FoundX, &FoundY) {
+        clickAt(FoundX, FoundY)
+    } else {
+        logAction("autoHatch failed to detect hatch_button")
+    }
 }
 
 autoRebirth() {
     FoundX := 0, FoundY := 0
     if templateMatch("rebirth_ready", &FoundX, &FoundY) {
         clickAt(FoundX, FoundY)
+    } else {
+        logAction("autoRebirth failed to detect rebirth_ready")
     }
 }
 
 autoUpgrade() {
-    detectUIElement("upgrade_button")
+    FoundX := 0, FoundY := 0
+    if templateMatch("upgrade_button", &FoundX, &FoundY) {
+        clickAt(FoundX, FoundY)
+    } else {
+        logAction("autoUpgrade failed to detect upgrade_button")
+    }
 }
 
 autoCollect() {
@@ -339,6 +376,8 @@ autoConvert() {
     if templateMatch("convert_button", &FoundX, &FoundY) {
         clickAt(FoundX, FoundY)
         logAction("Converted resource at x=" FoundX ", y=" FoundY)
+    } else {
+        logAction("autoConvert failed to detect convert_button")
     }
 }
 
@@ -356,7 +395,6 @@ checkGameState() {
     }
 }
 
-; ================== Main Automation Loop ==================
 automationLoop() {
     global running, paused, inventory_mode, pixelsearch_mode, checkstate_mode
     if (!running || paused)
@@ -407,7 +445,7 @@ automationLoop() {
                 }
                 if checkstate_mode
                     checkGameState()
-                Sleep Random(800, 1200)  ; Random delay for safety
+                Sleep Random(800, 1200)
             }
         }
     }
@@ -415,9 +453,10 @@ automationLoop() {
     Sleep CYCLE_INTERVAL
 }
 
-; ================== Utility Functions ==================
 logAction(action) {
-    FileAppend A_Now ": " action "`n", logFile
+    if ENABLE_LOGGING {
+        FileAppend A_Now ": " action "`n", logFile
+    }
 }
 
 loadConfigFromFile(*) {
@@ -425,8 +464,10 @@ loadConfigFromFile(*) {
     MsgBox "Configuration reloaded from " CONFIG_FILE
 }
 
-; ================== Main Execution ==================
 loadConfig()
-initGdip()
-setupGUI()
-TrayTip "🐝 BeeBrained’s PS99 Template", "Ready! Press " START_KEY " to start.", 10
+if initGdip() {
+    setupGUI()
+    TrayTip "🐝 BeeBrained’s PS99 Template", "Ready! Press " START_KEY " to start.", 10
+} else {
+    TrayTip "🐝 BeeBrained’s PS99 Template", "Gdip failed - limited functionality.", 10
+}
