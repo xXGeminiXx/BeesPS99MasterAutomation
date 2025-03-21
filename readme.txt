@@ -1,7 +1,3 @@
-Here’s an updated README that incorporates all the new features we’ve added to both the Python (`BMAT.py`) and AutoHotkey (`BMAT.ahk`) versions of **BeeBrained’s MAT (Master Automation Tool)**. It includes detailed explanations of the enhancements like dynamic pixel search areas, log rotation, GUI improvements, function controls, and config management, while keeping the structure clear and engaging.
-
----
-
 # Repository Files Navigation
 - README
 - MIT License
