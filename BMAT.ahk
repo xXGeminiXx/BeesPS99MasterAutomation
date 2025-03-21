@@ -5,67 +5,12 @@
 ; Hive Hangout: https://discord.gg/QVncFccwek
 
 ; ================== How to Use ==================
-; 1. Place template images (e.g., hatch_button.png, rebirth_ready.png) in a "templates" folder in the script directory.
-; 2. Edit ENABLED_FUNCTIONS to include the functions needed for the current event, e.g., ["autoHatch", "autoRebirth"].
-; 3. If general actions are needed, set ENABLE_GENERAL_ACTIONS to true and define KEY_SEQUENCE and capture coords as necessary.
-; 4. Launch the script, position your character in the event area, and press F1 to start.
-; 5. Update templates if the UI changes in game updates.
-; 6. Ensure Gdip_All.ahk is in the script directory for template matching (download from AHK forums).
-
-; ================== Configurable Settings ==================
-; **Timing (in milliseconds)**
-INTERACTION_DURATION := 5000  ; Duration to interact with each window
-CYCLE_INTERVAL := 60000       ; Time between full cycles (default: 60s)
-CLICK_DELAY_MIN := 500        ; Min delay between clicks
-CLICK_DELAY_MAX := 1500       ; Max delay between clicks
-
-; **Window Settings**
-WINDOW_TITLE := "Roblox"      ; Target window title
-EXCLUDED_TITLES := ["Roblox Account Manager"]  ; Titles to exclude
-
-; **Enabled Features**
-ENABLE_GENERAL_ACTIONS := true  ; Whether to run general key sequences and coord clicks
-ENABLED_FUNCTIONS := ["autoHatch", "autoRebirth"]  ; List of functions to run
-
-; **Key Sequences (edit these for each event)**
-; Format: Array of [key, duration_ms, repeat_count]
-KEY_SEQUENCE := [
-    ["space", 500, 1],   ; Jump (Spacebar)
-    ["w", 300, 2],       ; Move forward twice
-    ["f", 200, 1]        ; Open/close inventory or interact
-]
-
-; **Template Names (define templates for UI elements)**
-TEMPLATES := Map(
-    "hatch_button", "hatch_button.png",
-    "rebirth_button", "rebirth_button.png",
-    "rebirth_ready", "rebirth_ready.png",
-    "upgrade_button", "upgrade_button.png"
-)
-
-; **Hotkey Configuration**
-START_KEY := "F1"      ; Start automation
-STOP_KEY := "F2"       ; Stop automation
-PAUSE_KEY := "p"       ; Pause/resume
-CAPTURE_KEY := "c"     ; Capture mouse position
-INVENTORY_KEY := "F3"  ; Toggle inventory click mode
-PIXELSEARCH_KEY := "F4"; Toggle PixelSearch mode
-CHECKSTATE_KEY := "F5" ; Toggle game state checking (placeholder)
-
-; **PixelSearch Settings (based on screenshots)**
-PIXELSEARCH_COLOR := "0xFFFFFF"  ; White glow (e.g., Titanic Chest glow)
-PIXELSEARCH_VARIATION := 10      ; Color variation tolerance
-PIXELSEARCH_AREA := [0, 0, A_ScreenWidth, A_ScreenHeight]  ; Search entire screen
-
-; **Movement Patterns (for navigating tycoons or areas)**
-MOVEMENT_PATTERNS := Map(
-    "circle", [["w", 500, 1], ["d", 300, 1], ["s", 500, 1], ["a", 300, 1]],  ; Circle pattern
-    "zigzag", [["w", 400, 1], ["d", 200, 1], ["w", 400, 1], ["a", 200, 1]],  ; Zigzag pattern
-    "forward_backward", [["w", 1000, 1], ["s", 1000, 1]]                     ; Forward and back
-)
-
-; **Folder for Templates**
-TEMPLATE_FOLDER := A_ScriptDir "\templates"  ; Templates folder in script directory
+; 1. Place template images (e.g., hatch_button.png) in a "templates" folder in the script directory.
+; 2. Create and edit "config.ini" in the script directory to customize settings.
+; 3. Launch the script, position your character in the event area, and press F1 to start.
+; 4. Update templates and config after game updates if the UI or mechanics change.
+; 5. Ensure Gdip_All.ahk is in the script directory for template matching (download from AHK forums).
+; 6. Use responsibly—automation may violate game terms of service.
 
 ; ================== Global Variables ==================
 global running := false
@@ -75,10 +20,53 @@ global inventory_mode := false
 global pixelsearch_mode := false
 global checkstate_mode := false
 global myGUI
-global GdipToken  ; For Gdip library (template matching)
+global GdipToken      ; For Gdip library (template matching)
+global logFile := A_ScriptDir "\log.txt"
+global CONFIG_FILE := A_ScriptDir "\config.ini"
 
-; ================== Gdip Setup (for Template Matching) ==================
-#Include Gdip_All.ahk  ; Requires Gdip library
+; ================== Load Configuration ==================
+loadConfig() {
+    global
+    ; Default settings
+    INTERACTION_DURATION := 5000
+    CYCLE_INTERVAL := 60000
+    CLICK_DELAY_MIN := 500
+    CLICK_DELAY_MAX := 1500
+    WINDOW_TITLE := "Roblox"
+    EXCLUDED_TITLES := ["Roblox Account Manager"]
+    ENABLE_GENERAL_ACTIONS := true
+    ENABLED_FUNCTIONS := ["autoHatch", "autoRebirth"]
+    KEY_SEQUENCE := [["space", 500, 1], ["w", 300, 2], ["f", 200, 1]]
+    TEMPLATES := Map("hatch_button", "hatch_button.png", "rebirth_button", "rebirth_button.png", "rebirth_ready", "rebirth_ready.png", "upgrade_button", "upgrade_button.png")
+    START_KEY := "F1"
+    STOP_KEY := "F2"
+    PAUSE_KEY := "p"
+    CAPTURE_KEY := "c"
+    INVENTORY_KEY := "F3"
+    PIXELSEARCH_KEY := "F4"
+    CHECKSTATE_KEY := "F5"
+    PIXELSEARCH_COLOR := "0xFFFFFF"
+    PIXELSEARCH_VARIATION := 10
+    PIXELSEARCH_AREA := [0, 0, A_ScreenWidth, A_ScreenHeight]
+    MOVEMENT_PATTERNS := Map("circle", [["w", 500, 1], ["d", 300, 1], ["s", 500, 1], ["a", 300, 1]], "zigzag", [["w", 400, 1], ["d", 200, 1], ["w", 400, 1], ["a", 200, 1]], "forward_backward", [["w", 1000, 1], ["s", 1000, 1]])
+    TEMPLATE_FOLDER := A_ScriptDir "\templates"
+
+    ; Load from config.ini if exists
+    if FileExist(CONFIG_FILE) {
+        INTERACTION_DURATION := IniRead(CONFIG_FILE, "Timing", "INTERACTION_DURATION", INTERACTION_DURATION)
+        CYCLE_INTERVAL := IniRead(CONFIG_FILE, "Timing", "CYCLE_INTERVAL", CYCLE_INTERVAL)
+        CLICK_DELAY_MIN := IniRead(CONFIG_FILE, "Timing", "CLICK_DELAY_MIN", CLICK_DELAY_MIN)
+        CLICK_DELAY_MAX := IniRead(CONFIG_FILE, "Timing", "CLICK_DELAY_MAX", CLICK_DELAY_MAX)
+        WINDOW_TITLE := IniRead(CONFIG_FILE, "Window", "WINDOW_TITLE", WINDOW_TITLE)
+        EXCLUDED_TITLES := StrSplit(IniRead(CONFIG_FILE, "Window", "EXCLUDED_TITLES", "Roblox Account Manager"), ",")
+        ENABLE_GENERAL_ACTIONS := IniRead(CONFIG_FILE, "Features", "ENABLE_GENERAL_ACTIONS", ENABLE_GENERAL_ACTIONS)
+        ENABLED_FUNCTIONS := StrSplit(IniRead(CONFIG_FILE, "Features", "ENABLED_FUNCTIONS", "autoHatch,autoRebirth"), ",")
+        ; Note: KEY_SEQUENCE and other arrays may need manual parsing if customized in config
+    }
+}
+
+; ================== Gdip Setup ==================
+#Include Gdip_All.ahk
 initGdip() {
     global GdipToken
     if !GdipToken := Gdip_Startup() {
@@ -95,7 +83,8 @@ setupGUI() {
     myGUI.Add("Text", "x10 y60 w380 h20", "Coords Captured: 0").Name := "Coords"
     myGUI.Add("Text", "x10 y80 w380 h20", "PixelSearch: OFF").Name := "PixelSearchStatus"
     myGUI.Add("Text", "x10 y100 w380 h20", "GameState Check: OFF").Name := "GameStateStatus"
-    myGUI.Add("Button", "x10 y120 w120 h30", "Run Movement Pattern").OnEvent("Click", runMovementPattern)
+    myGUI.Add("Button", "x10 y120 w120 h30", "Run Movement").OnEvent("Click", runMovementPattern)
+    myGUI.Add("Button", "x140 y120 w120 h30", "Reload Config").OnEvent("Click", loadConfigFromFile)
     myGUI.Show("x0 y0 w400 h150")
 }
 
@@ -133,7 +122,7 @@ togglePause(*) {
     if running {
         paused := !paused
         updateStatus(paused ? "Paused" : "Running")
-        Sleep 200  ; Debounce
+        Sleep 200
     }
 }
 
@@ -212,13 +201,13 @@ pressKey(key, duration, repeat) {
         Send "{" key " down}"
         Sleep duration
         Send "{" key " up}"
-        Sleep 100  ; Small delay between repeats
+        Sleep Random(50, 150)  ; Random delay for human-like behavior
     }
 }
 
 clickAt(x, y) {
     Random delay, CLICK_DELAY_MIN, CLICK_DELAY_MAX
-    MouseMove x, y, 10  ; Smooth movement
+    MouseMove x, y, 10
     Sleep delay
     Click
 }
@@ -236,7 +225,6 @@ inventoryClick() {
     Send "{f up}"
 }
 
-; ================== PixelSearch Function ==================
 pixelSearchColor(&FoundX, &FoundY) {
     try {
         PixelSearch &FoundX, &FoundY, PIXELSEARCH_AREA[1], PIXELSEARCH_AREA[2], PIXELSEARCH_AREA[3], PIXELSEARCH_AREA[4], PIXELSEARCH_COLOR, PIXELSEARCH_VARIATION
@@ -246,35 +234,24 @@ pixelSearchColor(&FoundX, &FoundY) {
     }
 }
 
-; ================== Template Matching Function ==================
 templateMatch(templateName, &FoundX, &FoundY) {
     if !FileExist(TEMPLATE_FOLDER "\" TEMPLATES[templateName]) {
-        ToolTip "Template " templateName " not found!", 0, 100
-        Sleep 1000
-        ToolTip
+        logAction("Template " templateName " not found!")
         return false
     }
-
-    ; Capture screen and load template
     pBitmapScreen := Gdip_BitmapFromScreen()
     pBitmapTemplate := Gdip_CreateBitmapFromFile(TEMPLATE_FOLDER "\" TEMPLATES[templateName])
-    
-    ; Search for template on screen (90% match threshold)
     result := Gdip_ImageSearch(pBitmapScreen, pBitmapTemplate, &FoundX, &FoundY, 0, 0, 0, 0, 0.9)
-    
-    ; Clean up
     Gdip_DisposeImage(pBitmapScreen)
     Gdip_DisposeImage(pBitmapTemplate)
-    
     return result && FoundX != "" && FoundY != ""
 }
 
-; ================== Movement Pattern Function ==================
 runMovementPattern(*) {
     global running, paused
     if !running || paused
         return
-    ToolTip "Running Movement Pattern: circle", 0, 100
+    ToolTip "Running Movement: circle", 0, 100
     for seq in MOVEMENT_PATTERNS["circle"] {
         pressKey(seq[1], seq[2], seq[3])
     }
@@ -298,10 +275,35 @@ autoUpgrade() {
     detectUIElement("upgrade_button")
 }
 
+autoCollect() {
+    FoundX := 0, FoundY := 0
+    if pixelSearchColor(&FoundX, &FoundY) {
+        clickAt(FoundX, FoundY)
+        logAction("Collected item at x=" FoundX ", y=" FoundY)
+    }
+}
+
+autoConvert() {
+    ; Example for glitch cores to glitch gifts
+    FoundX := 0, FoundY := 0
+    if templateMatch("convert_button", &FoundX, &FoundY) {
+        clickAt(FoundX, FoundY)
+        logAction("Converted resource at x=" FoundX ", y=" FoundY)
+    }
+}
+
 detectUIElement(element) {
     FoundX := 0, FoundY := 0
     if templateMatch(element, &FoundX, &FoundY) {
         clickAt(FoundX, FoundY)
+    }
+}
+
+checkGameState() {
+    ; Example: Check for glitch gift availability
+    FoundX := 0, FoundY := 0
+    if pixelSearchColor(&FoundX, &FoundY) {
+        logAction("Game state: Resource detected at x=" FoundX ", y=" FoundY)
     }
 }
 
@@ -336,28 +338,27 @@ automationLoop() {
                     }
                 }
                 for func in ENABLED_FUNCTIONS {
-                    if func = "autoHatch" {
+                    if func = "autoHatch"
                         autoHatch()
-                    } else if func = "autoRebirth" {
+                    else if func = "autoRebirth"
                         autoRebirth()
-                    } else if func = "autoUpgrade" {
+                    else if func = "autoUpgrade"
                         autoUpgrade()
-                    }
-                    ; Add more functions as needed
+                    else if func = "autoCollect"
+                        autoCollect()
+                    else if func = "autoConvert"
+                        autoConvert()
                 }
-                if inventory_mode {
+                if inventory_mode
                     inventoryClick()
-                }
                 if pixelsearch_mode {
                     FoundX := 0, FoundY := 0
-                    if pixelSearchColor(&FoundX, &FoundY) {
+                    if pixelSearchColor(&FoundX, &FoundY)
                         clickAt(FoundX, FoundY)
-                    }
                 }
-                if checkstate_mode {
+                if checkstate_mode
                     checkGameState()
-                }
-                Sleep 1000
+                Sleep Random(800, 1200)  ; Random delay for safety
             }
         }
     }
@@ -365,13 +366,18 @@ automationLoop() {
     Sleep CYCLE_INTERVAL
 }
 
-; ================== Placeholder Functions ==================
-checkGameState() {
-    ; Placeholder: Add logic to detect game state (e.g., tower height for Valentine’s Tower)
-    ; Example: Use PixelSearch or template matching for event-specific conditions
+; ================== Utility Functions ==================
+logAction(action) {
+    FileAppend A_Now ": " action "`n", logFile
+}
+
+loadConfigFromFile(*) {
+    loadConfig()
+    MsgBox "Configuration reloaded from " CONFIG_FILE
 }
 
 ; ================== Main Execution ==================
-initGdip()  ; Initialize Gdip for template matching
+loadConfig()
+initGdip()
 setupGUI()
 TrayTip "🐝 BeeBrained’s PS99 Template", "Ready! Press " START_KEY " to start.", 10
