@@ -4,7 +4,7 @@
 
 ; Override CreateRectF to fix the "Missing comma" error
 CreateRectF(&RectF, x, y, w, h) {
-    RectF := Buffer(16, 0)  ; Allocate a 16-byte buffer
+    RectF := Buffer(16, 0)  ; Allocate a 16-byte buffer for the RectF structure
     NumPut("float", x, RectF, 0)
     NumPut("float", y, RectF, 4)
     NumPut("float", w, RectF, 8)
@@ -13,11 +13,19 @@ CreateRectF(&RectF, x, y, w, h) {
 
 ; Override CreateRect to prevent potential parsing errors
 CreateRect(&Rect, x, y, w, h) {
-    Rect := Buffer(16, 0)  ; Allocate a 16-byte buffer
+    Rect := Buffer(16, 0)  ; Allocate a 16-byte buffer for the Rect structure
     NumPut("uint", x, Rect, 0)
     NumPut("uint", y, Rect, 4)
     NumPut("uint", w, Rect, 8)
     NumPut("uint", h, Rect, 12)
+}
+
+; Include Gdip_All.ahk after overrides to ensure our definitions take precedence
+try {
+    #Include Gdip_All.ahk
+} catch {
+    logAction("Failed to include Gdip_All.ahk - template matching unavailable")
+    MsgBox "Gdip_All.ahk not found. Template matching will not work."
 }
 
 global running := false
@@ -122,13 +130,6 @@ updateTemplates() {
             logAction("Auto-detected new template: " A_LoopFileName)
         }
     }
-}
-
-try {
-    #Include Gdip_All.ahk
-} catch {
-    logAction("Failed to include Gdip_All.ahk - template matching unavailable")
-    MsgBox "Gdip_All.ahk not found. Template matching will not work."
 }
 
 initGdip() {
