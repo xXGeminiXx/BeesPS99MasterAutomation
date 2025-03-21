@@ -2,32 +2,6 @@
 ; 🐝 BeeBrained's PS99 Clan Battle Automation Template 🐝
 ; Last Updated: March 21, 2025
 
-; Override CreateRectF to fix the "Missing comma" error
-CreateRectF(&RectF, x, y, w, h) {
-    RectF := Buffer(16, 0)  ; Allocate a 16-byte buffer for the RectF structure
-    NumPut("float", x, RectF, 0)
-    NumPut("float", y, RectF, 4)
-    NumPut("float", w, RectF, 8)
-    NumPut("float", h, RectF, 12)
-}
-
-; Override CreateRect to prevent potential parsing errors
-CreateRect(&Rect, x, y, w, h) {
-    Rect := Buffer(16, 0)  ; Allocate a 16-byte buffer for the Rect structure
-    NumPut("uint", x, Rect, 0)
-    NumPut("uint", y, Rect, 4)
-    NumPut("uint", w, Rect, 8)
-    NumPut("uint", h, Rect, 12)
-}
-
-; Include Gdip_All.ahk after overrides to ensure our definitions take precedence
-try {
-    #Include Gdip_All.ahk
-} catch {
-    logAction("Failed to include Gdip_All.ahk - template matching unavailable")
-    MsgBox "Gdip_All.ahk not found. Template matching will not work."
-}
-
 global running := false
 global paused := false
 global coords := []
@@ -35,7 +9,6 @@ global inventory_mode := false
 global pixelsearch_mode := false
 global checkstate_mode := false
 global myGUI
-global GdipToken
 global logFile := A_ScriptDir "\log.txt"
 global CONFIG_FILE := A_ScriptDir "\config.ini"
 global ENABLE_LOGGING := true  ; Default to true, configurable
@@ -130,16 +103,6 @@ updateTemplates() {
             logAction("Auto-detected new template: " A_LoopFileName)
         }
     }
-}
-
-initGdip() {
-    global GdipToken
-    if !GdipToken := Gdip_Startup() {
-        logAction("Gdip_Startup failed - template matching unavailable")
-        MsgBox "Failed to initialize Gdip library."
-        return false
-    }
-    return true
 }
 
 setupGUI() {
@@ -318,29 +281,51 @@ pixelSearchColor(&FoundX, &FoundY) {
 }
 
 templateMatch(templateName, &FoundX, &FoundY) {
+    ; Use AutoHotkey's built-in ImageSearch to find the template on the screen
     templatePath := TEMPLATE_FOLDER "\" TEMPLATES[templateName]
     if !FileExist(templatePath) {
         logAction("Template not found: " templatePath)
         return false
     }
-    pBitmapScreen := Gdip_BitmapFromScreen()
-    if !pBitmapScreen {
-        logAction("Gdip_BitmapFromScreen failed for template: " templateName)
-        return false
-    }
-    pBitmapTemplate := Gdip_CreateBitmapFromFile(templatePath)
-    if !pBitmapTemplate {
-        logAction("Gdip_CreateBitmapFromFile failed for: " templatePath)
-        Gdip_DisposeImage(pBitmapScreen)
-        return false
-    }
-    result := Gdip_ImageSearch(pBitmapScreen, pBitmapTemplate, &FoundX, &FoundY, 0, 0, 0, 0, 0.9)
-    Gdip_DisposeImage(pBitmapScreen)
-    Gdip_DisposeImage(pBitmapTemplate)
-    if !result {
+
+    ; Search the entire screen for the template image
+    ; Variation of 0 for exact match; adjust if needed for more leniency
+    ImageSearch &FoundX, &FoundY, 0, 0, A_ScreenWidth, A_ScreenHeight, *0 %templatePath%
+    if ErrorLevel {
         logAction("Template match failed for: " templateName)
+        return false
     }
-    return result && FoundX != "" && FoundY != ""
+
+    ; Adjust coordinates to the center of the found image for clicking
+    ImageInfo := ImageGetInfo(templatePath)
+    if ImageInfo {
+        FoundX += ImageInfo.Width // 2
+        FoundY += ImageInfo.Height // 2
+    }
+
+    return true
+}
+
+; Helper function to get image dimensions (width and height) for centering clicks
+ImageGetInfo(imagePath) {
+    try {
+        ; Use GDI (not GDI+) to get image dimensions without external libraries
+        hBitmap := DllCall("LoadImage", "UInt", 0, "Str", imagePath, "UInt", 0, "Int", 0, "Int", 0, "UInt", 0x10, "Ptr")
+        if !hBitmap {
+            logAction("Failed to load image for dimensions: " imagePath)
+            return false
+        }
+
+        VarSetCapacity(BITMAP, 32, 0)
+        DllCall("GetObject", "Ptr", hBitmap, "Int", 32, "Ptr", &BITMAP)
+        width := NumGet(BITMAP, 4, "Int")
+        height := NumGet(BITMAP, 8, "Int")
+        DllCall("DeleteObject", "Ptr", hBitmap)
+        return {Width: width, Height: height}
+    } catch {
+        logAction("Error getting image dimensions for: " imagePath)
+        return false
+    }
 }
 
 runMovementPattern(*) {
@@ -484,9 +469,5 @@ loadConfigFromFile(*) {
 }
 
 loadConfig()
-if initGdip() {
-    setupGUI()
-    TrayTip "🐝 BeeBrained’s PS99 Template", "Ready! Press " START_KEY " to start.", 10
-} else {
-    TrayTip "🐝 BeeBrained’s PS99 Template", "Gdip failed - limited functionality.", 10
-}
+setupGUI()
+TrayTip "🐝 BeeBrained’s PS99 Template", "Ready! Press " START_KEY " to start.", 10
