@@ -2,6 +2,24 @@
 ; 🐝 BeeBrained's PS99 Clan Battle Automation Template 🐝
 ; Last Updated: March 21, 2025
 
+; Override CreateRectF to fix the "Missing comma" error
+CreateRectF(&RectF, x, y, w, h) {
+    RectF := Buffer(16, 0)  ; Allocate a 16-byte buffer
+    NumPut("float", x, RectF, 0)
+    NumPut("float", y, RectF, 4)
+    NumPut("float", w, RectF, 8)
+    NumPut("float", h, RectF, 12)
+}
+
+; Override CreateRect to prevent potential parsing errors
+CreateRect(&Rect, x, y, w, h) {
+    Rect := Buffer(16, 0)  ; Allocate a 16-byte buffer
+    NumPut("uint", x, Rect, 0)
+    NumPut("uint", y, Rect, 4)
+    NumPut("uint", w, Rect, 8)
+    NumPut("uint", h, Rect, 12)
+}
+
 global running := false
 global paused := false
 global coords := []
