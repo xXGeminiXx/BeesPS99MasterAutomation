@@ -3,14 +3,22 @@
 ; A modular baseline for automating Pet Simulator 99 clan battle events in Roblox.
 ; By BeeBrained - https://www.youtube.com/@BeeBrained-PS99
 ; Hive Hangout: https://discord.gg/QVncFccwek
+; Last Updated: March 21, 2025
 
 ; ================== How to Use ==================
 ; 1. Place template images (e.g., hatch_button.png) in a "templates" folder in the script directory.
-; 2. Create and edit "config.ini" in the script directory to customize settings.
+; 2. Edit config.ini to customize settings (auto-created with defaults if missing).
 ; 3. Launch the script, position your character in the event area, and press F1 to start.
-; 4. Update templates and config after game updates if the UI or mechanics change.
+; 4. Update templates and config after game updates if UI or mechanics change.
 ; 5. Ensure Gdip_All.ahk is in the script directory for template matching (download from AHK forums).
 ; 6. Use responsibly—automation may violate game terms of service.
+
+; **Updating for New Events**
+; 1. Check the latest clan battle details on biggames.io or Pet Simulator Wiki.
+; 2. Capture new template images for changed UI elements and place them in the "templates" folder.
+; 3. Update the [Templates] section in config.ini with new template filenames.
+; 4. Adjust ENABLED_FUNCTIONS and KEY_SEQUENCE based on event requirements.
+; 5. If new functions are needed, add them to the script and include in ENABLED_FUNCTIONS.
 
 ; ================== Global Variables ==================
 global running := false
@@ -24,20 +32,71 @@ global GdipToken      ; For Gdip library (template matching)
 global logFile := A_ScriptDir "\log.txt"
 global CONFIG_FILE := A_ScriptDir "\config.ini"
 
+; ================== Default Config ==================
+defaultIni := "
+(
+[Timing]
+; Duration to interact with each window in milliseconds
+INTERACTION_DURATION=5000
+; Time between full cycles in milliseconds
+CYCLE_INTERVAL=60000
+; Minimum delay between clicks in milliseconds
+CLICK_DELAY_MIN=500
+; Maximum delay between clicks in milliseconds
+CLICK_DELAY_MAX=1500
+
+[Window]
+; Target window title
+WINDOW_TITLE=Roblox
+; Comma-separated list of titles to exclude
+EXCLUDED_TITLES=Roblox Account Manager
+
+[Features]
+; Whether to enable general actions (key sequences and coord clicks)
+ENABLE_GENERAL_ACTIONS=true
+; Comma-separated list of functions to enable (e.g., autoHatch, autoRebirth, autoCollect)
+ENABLED_FUNCTIONS=autoHatch,autoRebirth
+
+[Templates]
+; Template filenames for UI elements (update for new events)
+hatch_button=hatch_button.png
+rebirth_button=rebirth_button.png
+rebirth_ready=rebirth_ready.png
+upgrade_button=upgrade_button.png
+)"
+
 ; ================== Load Configuration ==================
 loadConfig() {
     global
-    ; Default settings
-    INTERACTION_DURATION := 5000
-    CYCLE_INTERVAL := 60000
-    CLICK_DELAY_MIN := 500
-    CLICK_DELAY_MAX := 1500
-    WINDOW_TITLE := "Roblox"
-    EXCLUDED_TITLES := ["Roblox Account Manager"]
-    ENABLE_GENERAL_ACTIONS := true
-    ENABLED_FUNCTIONS := ["autoHatch", "autoRebirth"]
-    KEY_SEQUENCE := [["space", 500, 1], ["w", 300, 2], ["f", 200, 1]]
-    TEMPLATES := Map("hatch_button", "hatch_button.png", "rebirth_button", "rebirth_button.png", "rebirth_ready", "rebirth_ready.png", "upgrade_button", "upgrade_button.png")
+    ; Create config.ini with defaults if it doesn't exist
+    if !FileExist(CONFIG_FILE) {
+        FileAppend defaultIni, CONFIG_FILE
+        logAction("Created default config.ini at " CONFIG_FILE)
+    }
+
+    ; Load settings from config.ini with defaults as fallback
+    ; Timing
+    INTERACTION_DURATION := IniRead(CONFIG_FILE, "Timing", "INTERACTION_DURATION", 5000)
+    CYCLE_INTERVAL := IniRead(CONFIG_FILE, "Timing", "CYCLE_INTERVAL", 60000)
+    CLICK_DELAY_MIN := IniRead(CONFIG_FILE, "Timing", "CLICK_DELAY_MIN", 500)
+    CLICK_DELAY_MAX := IniRead(CONFIG_FILE, "Timing", "CLICK_DELAY_MAX", 1500)
+    
+    ; Window
+    WINDOW_TITLE := IniRead(CONFIG_FILE, "Window", "WINDOW_TITLE", "Roblox")
+    EXCLUDED_TITLES := StrSplit(IniRead(CONFIG_FILE, "Window", "EXCLUDED_TITLES", "Roblox Account Manager"), ",")
+    
+    ; Features
+    ENABLE_GENERAL_ACTIONS := IniRead(CONFIG_FILE, "Features", "ENABLE_GENERAL_ACTIONS", true)
+    ENABLED_FUNCTIONS := StrSplit(IniRead(CONFIG_FILE, "Features", "ENABLED_FUNCTIONS", "autoHatch,autoRebirth"), ",")
+    
+    ; Templates (configurable for new events)
+    TEMPLATES := Map()
+    TEMPLATES["hatch_button"] := IniRead(CONFIG_FILE, "Templates", "hatch_button", "hatch_button.png")
+    TEMPLATES["rebirth_button"] := IniRead(CONFIG_FILE, "Templates", "rebirth_button", "rebirth_button.png")
+    TEMPLATES["rebirth_ready"] := IniRead(CONFIG_FILE, "Templates", "rebirth_ready", "rebirth_ready.png")
+    TEMPLATES["upgrade_button"] := IniRead(CONFIG_FILE, "Templates", "upgrade_button", "upgrade_button.png")
+    
+    ; Hardcoded defaults (not in config.ini for simplicity, but can be moved if desired)
     START_KEY := "F1"
     STOP_KEY := "F2"
     PAUSE_KEY := "p"
@@ -48,21 +107,13 @@ loadConfig() {
     PIXELSEARCH_COLOR := "0xFFFFFF"
     PIXELSEARCH_VARIATION := 10
     PIXELSEARCH_AREA := [0, 0, A_ScreenWidth, A_ScreenHeight]
-    MOVEMENT_PATTERNS := Map("circle", [["w", 500, 1], ["d", 300, 1], ["s", 500, 1], ["a", 300, 1]], "zigzag", [["w", 400, 1], ["d", 200, 1], ["w", 400, 1], ["a", 200, 1]], "forward_backward", [["w", 1000, 1], ["s", 1000, 1]])
+    MOVEMENT_PATTERNS := Map(
+        "circle", [["w", 500, 1], ["d", 300, 1], ["s", 500, 1], ["a", 300, 1]],
+        "zigzag", [["w", 400, 1], ["d", 200, 1], ["w", 400, 1], ["a", 200, 1]],
+        "forward_backward", [["w", 1000, 1], ["s", 1000, 1]]
+    )
+    KEY_SEQUENCE := [["space", 500, 1], ["w", 300, 2], ["f", 200, 1]]
     TEMPLATE_FOLDER := A_ScriptDir "\templates"
-
-    ; Load from config.ini if exists
-    if FileExist(CONFIG_FILE) {
-        INTERACTION_DURATION := IniRead(CONFIG_FILE, "Timing", "INTERACTION_DURATION", INTERACTION_DURATION)
-        CYCLE_INTERVAL := IniRead(CONFIG_FILE, "Timing", "CYCLE_INTERVAL", CYCLE_INTERVAL)
-        CLICK_DELAY_MIN := IniRead(CONFIG_FILE, "Timing", "CLICK_DELAY_MIN", CLICK_DELAY_MIN)
-        CLICK_DELAY_MAX := IniRead(CONFIG_FILE, "Timing", "CLICK_DELAY_MAX", CLICK_DELAY_MAX)
-        WINDOW_TITLE := IniRead(CONFIG_FILE, "Window", "WINDOW_TITLE", WINDOW_TITLE)
-        EXCLUDED_TITLES := StrSplit(IniRead(CONFIG_FILE, "Window", "EXCLUDED_TITLES", "Roblox Account Manager"), ",")
-        ENABLE_GENERAL_ACTIONS := IniRead(CONFIG_FILE, "Features", "ENABLE_GENERAL_ACTIONS", ENABLE_GENERAL_ACTIONS)
-        ENABLED_FUNCTIONS := StrSplit(IniRead(CONFIG_FILE, "Features", "ENABLED_FUNCTIONS", "autoHatch,autoRebirth"), ",")
-        ; Note: KEY_SEQUENCE and other arrays may need manual parsing if customized in config
-    }
 }
 
 ; ================== Gdip Setup ==================
@@ -284,7 +335,6 @@ autoCollect() {
 }
 
 autoConvert() {
-    ; Example for glitch cores to glitch gifts
     FoundX := 0, FoundY := 0
     if templateMatch("convert_button", &FoundX, &FoundY) {
         clickAt(FoundX, FoundY)
@@ -300,7 +350,6 @@ detectUIElement(element) {
 }
 
 checkGameState() {
-    ; Example: Check for glitch gift availability
     FoundX := 0, FoundY := 0
     if pixelSearchColor(&FoundX, &FoundY) {
         logAction("Game state: Resource detected at x=" FoundX ", y=" FoundY)
