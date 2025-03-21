@@ -199,7 +199,7 @@ BB_stopAutomation(*) {
     global BB_running, BB_paused
     BB_running := false
     BB_paused := false
-    SetTimer BB_automationLoop, "Off"
+    SetTimer BB_automationLoop, 0
     BB_updateStatus("Idle")
 }
 
