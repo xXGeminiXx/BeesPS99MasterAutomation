@@ -2,16 +2,56 @@
 ; 🐝 BeeBrained's PS99 Clan Battle Automation Template 🐝
 ; Last Updated: March 21, 2025
 
-global running := false
-global paused := false
-global coords := []
-global inventory_mode := false
-global pixelsearch_mode := false
-global checkstate_mode := false
-global myGUI
-global logFile := A_ScriptDir "\log.txt"
-global CONFIG_FILE := A_ScriptDir "\config.ini"
-global ENABLE_LOGGING := true  ; Default to true, configurable
+; ===================== REQUIRED GLOBAL VARIABLES =====================
+
+global BB_running := false
+global BB_paused := false
+global BB_coords := []
+global BB_CLICK_DELAY_MAX := 1500  ; Changed to match INI file (in milliseconds)
+global BB_CLICK_DELAY_MIN := 500   ; Changed to match INI file (in milliseconds)
+global BB_inventory_mode := false
+global BB_pixelsearch_mode := false
+global BB_PIXELSEARCH_AREA := [0, 0, A_ScreenWidth, A_ScreenHeight]
+global BB_PIXELSEARCH_COLOR := "0xFFFFFF"
+global BB_PIXELSEARCH_VARIATION := 10
+global BB_MOVEMENT_PATTERNS := Map()
+global BB_INTERACTION_DURATION := 5000  ; Changed to match INI file (in milliseconds)
+global BB_ENABLE_GENERAL_ACTIONS := true
+global BB_START_KEY := "F1"
+global BB_STOP_KEY := "F2"
+global BB_PAUSE_KEY := "p"
+global BB_KEY_SEQUENCE := [["space", 500, 1], ["w", 300, 2], ["f", 200, 1]]
+global BB_CYCLE_INTERVAL := 60000  ; Changed to match INI file (in milliseconds)
+global BB_checkstate_mode := false
+global BB_myGUI
+global BB_logFile := A_ScriptDir "\log.txt"
+global BB_CONFIG_FILE := A_ScriptDir "\config.ini"
+global BB_ENABLE_LOGGING := true
+global BB_ENABLED_FUNCTIONS := []
+global BB_TEMPLATE_FOLDER := A_ScriptDir "\templates"
+global BB_WINDOW_TITLE := "Roblox"
+global BB_EXCLUDED_TITLES := ["Roblox Account Manager"]
+global BB_TEMPLATES := Map()
+global BB_ErrorLevel := 0
+global BB_CAPTURE_KEY := "c"
+global BB_INVENTORY_KEY := "F3"
+global BB_PIXELSEARCH_KEY := "F4"
+global BB_CHECKSTATE_KEY := "F5"
+
+; ===================== MOVEMENT PATTERNS DEFINITION =====================
+
+BB_MOVEMENT_PATTERNS := Map(
+    "circle", [["w", 500, 1], ["d", 300, 1], ["s", 500, 1], ["a", 300, 1]],
+    "zigzag", [["w", 400, 1], ["d", 200, 1], ["w", 400, 1], ["a", 200, 1]],
+    "forward_backward", [["w", 1000, 1], ["s", 1000, 1]]
+)
+
+BB_logAction(action) {
+    global BB_ENABLE_LOGGING, BB_logFile
+    if BB_ENABLE_LOGGING {
+        FileAppend(A_Now ": " action "`n", BB_logFile)
+    }
+}
 
 defaultIni := "
 (
@@ -44,205 +84,206 @@ PIXELSEARCH_AREA=0,0," A_ScreenWidth "," A_ScreenHeight "
 ENABLE_LOGGING=true
 )"
 
-loadConfig() {
-    global
-    if !FileExist(CONFIG_FILE) {
-        FileAppend defaultIni, CONFIG_FILE
-        logAction("Created default config.ini")
+BB_loadConfig() {
+    global BB_CONFIG_FILE, BB_logFile, BB_ENABLE_LOGGING, BB_WINDOW_TITLE, BB_EXCLUDED_TITLES
+    global BB_CLICK_DELAY_MIN, BB_CLICK_DELAY_MAX, BB_INTERACTION_DURATION, BB_CYCLE_INTERVAL
+    global BB_PIXELSEARCH_COLOR, BB_PIXELSEARCH_VARIATION, BB_PIXELSEARCH_AREA
+    global BB_ENABLE_GENERAL_ACTIONS, BB_ENABLED_FUNCTIONS, BB_MOVEMENT_PATTERNS, BB_KEY_SEQUENCE
+    global BB_TEMPLATE_FOLDER, BB_TEMPLATES
+
+    if !FileExist(BB_CONFIG_FILE) {
+        FileAppend(defaultIni, BB_CONFIG_FILE)
+        BB_logAction("Created default config.ini")
     }
     
-    INTERACTION_DURATION := IniRead(CONFIG_FILE, "Timing", "INTERACTION_DURATION", 5000)
-    CYCLE_INTERVAL := IniRead(CONFIG_FILE, "Timing", "CYCLE_INTERVAL", 60000)
-    CLICK_DELAY_MIN := IniRead(CONFIG_FILE, "Timing", "CLICK_DELAY_MIN", 500)
-    CLICK_DELAY_MAX := IniRead(CONFIG_FILE, "Timing", "CLICK_DELAY_MAX", 1500)
+    ; ===================== LOAD CONFIGURATION =====================
+    BB_INTERACTION_DURATION := IniRead(BB_CONFIG_FILE, "Timing", "INTERACTION_DURATION", 5000)
+    BB_CYCLE_INTERVAL := IniRead(BB_CONFIG_FILE, "Timing", "CYCLE_INTERVAL", 60000)
+    BB_CLICK_DELAY_MIN := IniRead(BB_CONFIG_FILE, "Timing", "CLICK_DELAY_MIN", 500)
+    BB_CLICK_DELAY_MAX := IniRead(BB_CONFIG_FILE, "Timing", "CLICK_DELAY_MAX", 1500)
     
-    WINDOW_TITLE := IniRead(CONFIG_FILE, "Window", "WINDOW_TITLE", "Roblox")
-    EXCLUDED_TITLES := StrSplit(IniRead(CONFIG_FILE, "Window", "EXCLUDED_TITLES", "Roblox Account Manager"), ",")
+    BB_WINDOW_TITLE := IniRead(BB_CONFIG_FILE, "Window", "WINDOW_TITLE", "Roblox")
+    BB_EXCLUDED_TITLES := StrSplit(IniRead(BB_CONFIG_FILE, "Window", "EXCLUDED_TITLES", "Roblox Account Manager"), ",")
     
-    ENABLE_GENERAL_ACTIONS := IniRead(CONFIG_FILE, "Features", "ENABLE_GENERAL_ACTIONS", true)
-    ENABLED_FUNCTIONS := StrSplit(IniRead(CONFIG_FILE, "Features", "ENABLED_FUNCTIONS", "autoHatch,autoRebirth"), ",")
+    BB_ENABLE_GENERAL_ACTIONS := IniRead(BB_CONFIG_FILE, "Features", "ENABLE_GENERAL_ACTIONS", true)
+    BB_ENABLED_FUNCTIONS := StrSplit(IniRead(BB_CONFIG_FILE, "Features", "ENABLED_FUNCTIONS", "autoHatch,autoRebirth"), ",")
     
-    TEMPLATES := Map()
-    updateTemplates()  ; Auto-detect templates from folder
+    ; ===================== TEMPLATE MANAGEMENT =====================
+    BB_TEMPLATE_FOLDER := A_ScriptDir "\templates"
+    BB_updateTemplates()
     
-    START_KEY := "F1"
-    STOP_KEY := "F2"
-    PAUSE_KEY := "p"
-    CAPTURE_KEY := "c"
-    INVENTORY_KEY := "F3"
-    PIXELSEARCH_KEY := "F4"
-    CHECKSTATE_KEY := "F5"
-    PIXELSEARCH_COLOR := IniRead(CONFIG_FILE, "PixelSearch", "PIXELSEARCH_COLOR", "0xFFFFFF")
-    PIXELSEARCH_VARIATION := IniRead(CONFIG_FILE, "PixelSearch", "PIXELSEARCH_VARIATION", 10)
-    area := StrSplit(IniRead(CONFIG_FILE, "PixelSearch", "PIXELSEARCH_AREA", "0,0," A_ScreenWidth "," A_ScreenHeight), ",")
-    PIXELSEARCH_AREA := [area[1], area[2], area[3], area[4]]  ; Cached at init
+    ; ===================== PIXELSEARCH SETTINGS =====================
+    BB_PIXELSEARCH_COLOR := IniRead(BB_CONFIG_FILE, "PixelSearch", "PIXELSEARCH_COLOR", "0xFFFFFF")
+    BB_PIXELSEARCH_VARIATION := IniRead(BB_CONFIG_FILE, "PixelSearch", "PIXELSEARCH_VARIATION", 10)
+    BB_area := StrSplit(IniRead(BB_CONFIG_FILE, "PixelSearch", "PIXELSEARCH_AREA", "0,0," A_ScreenWidth "," A_ScreenHeight), ",")
+    BB_PIXELSEARCH_AREA := [BB_area[1], BB_area[2], BB_area[3], BB_area[4]]
     
-    ENABLE_LOGGING := IniRead(CONFIG_FILE, "Logging", "ENABLE_LOGGING", true)
-    
-    MOVEMENT_PATTERNS := Map(
-        "circle", [["w", 500, 1], ["d", 300, 1], ["s", 500, 1], ["a", 300, 1]],
-        "zigzag", [["w", 400, 1], ["d", 200, 1], ["w", 400, 1], ["a", 200, 1]],
-        "forward_backward", [["w", 1000, 1], ["s", 1000, 1]]
-    )
-    KEY_SEQUENCE := [["space", 500, 1], ["w", 300, 2], ["f", 200, 1]]
-    TEMPLATE_FOLDER := A_ScriptDir "\templates"
+    ; ===================== LOGGING SETTINGS =====================
+    BB_ENABLE_LOGGING := IniRead(BB_CONFIG_FILE, "Logging", "ENABLE_LOGGING", true)
 }
 
-updateTemplates() {
-    global TEMPLATES, TEMPLATE_FOLDER
-    ; Load from config first
-    TEMPLATES["hatch_button"] := IniRead(CONFIG_FILE, "Templates", "hatch_button", "hatch_button.png")
-    TEMPLATES["rebirth_button"] := IniRead(CONFIG_FILE, "Templates", "rebirth_button", "rebirth_button.png")
-    TEMPLATES["rebirth_ready"] := IniRead(CONFIG_FILE, "Templates", "rebirth_ready", "rebirth_ready.png")
-    TEMPLATES["upgrade_button"] := IniRead(CONFIG_FILE, "Templates", "upgrade_button", "upgrade_button.png")
+BB_updateTemplates() {
+    global BB_TEMPLATES, BB_TEMPLATE_FOLDER
+    ; Load templates from config
+    BB_TEMPLATES["hatch_button"] := IniRead(BB_CONFIG_FILE, "Templates", "hatch_button", "hatch_button.png")
+    BB_TEMPLATES["rebirth_button"] := IniRead(BB_CONFIG_FILE, "Templates", "rebirth_button", "rebirth_button.png")
+    BB_TEMPLATES["rebirth_ready"] := IniRead(BB_CONFIG_FILE, "Templates", "rebirth_ready", "rebirth_ready.png")
+    BB_TEMPLATES["upgrade_button"] := IniRead(BB_CONFIG_FILE, "Templates", "upgrade_button", "upgrade_button.png")
+    
     ; Auto-detect new templates in folder
-    Loop Files, TEMPLATE_FOLDER "\*.png" {
+    Loop Files, BB_TEMPLATE_FOLDER "\*.png" {
         name := StrReplace(A_LoopFileName, ".png", "")
-        if !TEMPLATES.Has(name) {
-            TEMPLATES[name] := A_LoopFileName
-            logAction("Auto-detected new template: " A_LoopFileName)
+        if !BB_TEMPLATES.Has(name) {
+            BB_TEMPLATES[name] := A_LoopFileName
+            BB_logAction("Auto-detected new template: " A_LoopFileName)
         }
     }
 }
 
-setupGUI() {
-    global myGUI, ENABLED_FUNCTIONS
-    myGUI := Gui("+AlwaysOnTop", "🐝 BeeBrained’s PS99 Clan Battle Template 🐝")
-    myGUI.Add("Text", "x10 y10 w380 h20", "🐝 Use " START_KEY " to start, " STOP_KEY " to stop, Esc to exit 🐝")
-    myGUI.Add("Text", "x10 y40 w380 h20", "Status: Idle").Name := "Status"
-    myGUI.Add("Text", "x10 y60 w380 h20", "Coords Captured: 0").Name := "Coords"
-    myGUI.Add("Text", "x10 y80 w380 h20", "PixelSearch: OFF").Name := "PixelSearchStatus"
-    myGUI.Add("Text", "x10 y100 w380 h20", "GameState Check: OFF").Name := "GameStateStatus"
-    myGUI.Add("Text", "x10 y120 w380 h20", "Active Windows: 0").Name := "WindowCount"
-    myGUI.Add("Button", "x10 y140 w120 h30", "Run Movement").OnEvent("Click", runMovementPattern)
-    myGUI.Add("Button", "x140 y140 w120 h30", "Reload Config").OnEvent("Click", loadConfigFromFile)
+BB_setupGUI() {
+    global BB_myGUI, BB_ENABLED_FUNCTIONS
+    BB_myGUI := Gui("+AlwaysOnTop", "🐝 BeeBrained’s PS99 Clan Battle Template 🐝")
+    BB_myGUI.Add("Text", "x10 y10 w380 h20", "🐝 Use " BB_START_KEY " to start, " BB_STOP_KEY " to stop, Esc to exit 🐝")
+    BB_myGUI.Add("Text", "x10 y40 w380 h20", "Status: Idle").Name := "Status"
+    BB_myGUI.Add("Text", "x10 y60 w380 h20", "Coords Captured: 0").Name := "Coords"
+    BB_myGUI.Add("Text", "x10 y80 w380 h20", "PixelSearch: OFF").Name := "PixelSearchStatus"
+    BB_myGUI.Add("Text", "x10 y100 w380 h20", "GameState Check: OFF").Name := "GameStateStatus"
+    BB_myGUI.Add("Text", "x10 y120 w380 h20", "Active Windows: 0").Name := "WindowCount"
+    BB_myGUI.Add("Button", "x10 y140 w120 h30", "Run Movement").OnEvent("Click", BB_runMovementPattern)
+    BB_myGUI.Add("Button", "x140 y140 w120 h30", "Reload Config").OnEvent("Click", BB_loadConfigFromFile)
+    
     ; Add checkboxes for functions
     yPos := 180
-    for func in ENABLED_FUNCTIONS {
-        myGUI.Add("Checkbox", "x10 y" yPos " w120 h20 v" func " Checked1", func).OnEvent("Click", toggleFunction)
+    for func in BB_ENABLED_FUNCTIONS {
+        BB_myGUI.Add("Checkbox", "x10 y" yPos " w120 h20 v" func " Checked1", func).OnEvent("Click", BB_toggleFunction)
         yPos += 20
     }
-    myGUI.Show("x0 y0 w400 h" (yPos + 20))
+    
+    BB_myGUI.Show("x0 y0 w400 h" (yPos + 20))
 }
 
-toggleFunction(ctrl, *) {
-    global ENABLED_FUNCTIONS
+BB_toggleFunction(ctrl, *) {
+    global BB_ENABLED_FUNCTIONS
     funcName := ctrl.Name
     if ctrl.Value {
-        if !ENABLED_FUNCTIONS.Contains(funcName) {
-            ENABLED_FUNCTIONS.Push(funcName)
+        if !BB_ENABLED_FUNCTIONS.Contains(funcName) {
+            BB_ENABLED_FUNCTIONS.Push(funcName)
         }
     } else {
-        if idx := ENABLED_FUNCTIONS.IndexOf(funcName) {
-            ENABLED_FUNCTIONS.RemoveAt(idx)
+        if idx := BB_ENABLED_FUNCTIONS.IndexOf(funcName) {
+            BB_ENABLED_FUNCTIONS.RemoveAt(idx)
         }
     }
 }
 
-Hotkey START_KEY, startAutomation
-Hotkey STOP_KEY, stopAutomation
-Hotkey PAUSE_KEY, togglePause
-Hotkey CAPTURE_KEY, captureCoords
-Hotkey INVENTORY_KEY, toggleInventoryMode
-Hotkey PIXELSEARCH_KEY, togglePixelSearchMode
-Hotkey CHECKSTATE_KEY, toggleCheckStateMode
-Esc::ExitApp
+Hotkey(BB_START_KEY, BB_startAutomation)
+Hotkey(BB_STOP_KEY, BB_stopAutomation)
+Hotkey(BB_PAUSE_KEY, BB_togglePause)
+Hotkey(BB_CAPTURE_KEY, BB_captureCoords)
+Hotkey(BB_INVENTORY_KEY, BB_toggleInventoryMode)
+Hotkey(BB_PIXELSEARCH_KEY, BB_togglePixelSearchMode)
+Hotkey(BB_CHECKSTATE_KEY, BB_toggleCheckStateMode)
+Hotkey("Esc", BB_exitApp)
 
-startAutomation(*) {
-    global running, paused
-    if running
+BB_startAutomation(*) {
+    global BB_running, BB_paused
+    if BB_running
         return
-    running := true
-    paused := false
-    updateStatus("Running")
-    SetTimer automationLoop, 100
+    BB_running := true
+    BB_paused := false
+    BB_updateStatus("Running")
+    SetTimer BB_automationLoop, 100
 }
 
-stopAutomation(*) {
-    global running, paused
-    running := false
-    paused := false
-    SetTimer automationLoop, "Off"
-    updateStatus("Idle")
+BB_stopAutomation(*) {
+    global BB_running, BB_paused
+    BB_running := false
+    BB_paused := false
+    SetTimer BB_automationLoop, "Off"
+    BB_updateStatus("Idle")
 }
 
-togglePause(*) {
-    global running, paused
-    if running {
-        paused := !paused
-        updateStatus(paused ? "Paused" : "Running")
+BB_togglePause(*) {
+    global BB_running, BB_paused
+    if BB_running {
+        BB_paused := !BB_paused
+        BB_updateStatus(BB_paused ? "Paused" : "Running")
         Sleep 200
     }
 }
 
-captureCoords(*) {
+BB_captureCoords(*) {
+    global BB_coords, BB_myGUI
     Sleep 500
     MouseGetPos(&x, &y)
-    coords.Push([x, y])
-    myGUI["Coords"].Text := "Coords Captured: " coords.Length()
+    BB_coords.Push([x, y])
+    BB_myGUI["Coords"].Text := "Coords Captured: " BB_coords.Length()
     ToolTip "Captured: x=" x ", y=" y, 0, 100
     Sleep 1000
     ToolTip
 }
 
-toggleInventoryMode(*) {
-    global inventory_mode
-    inventory_mode := !inventory_mode
-    ToolTip "Inventory Mode: " (inventory_mode ? "ON" : "OFF"), 0, 100
+BB_toggleInventoryMode(*) {
+    global BB_inventory_mode
+    BB_inventory_mode := !BB_inventory_mode
+    ToolTip "Inventory Mode: " (BB_inventory_mode ? "ON" : "OFF"), 0, 100
     Sleep 1000
     ToolTip
 }
 
-togglePixelSearchMode(*) {
-    global pixelsearch_mode
-    myGUI["PixelSearchStatus"].Text := "PixelSearch: " (pixelsearch_mode ? "ON" : "OFF")
-    pixelsearch_mode := !pixelsearch_mode
-    ToolTip "PixelSearch Mode: " (pixelsearch_mode ? "ON" : "OFF"), 0, 100
+BB_togglePixelSearchMode(*) {
+    global BB_pixelsearch_mode, BB_myGUI
+    BB_pixelsearch_mode := !BB_pixelsearch_mode
+    BB_myGUI["PixelSearchStatus"].Text := "PixelSearch: " (BB_pixelsearch_mode ? "ON" : "OFF")
+    ToolTip "PixelSearch Mode: " (BB_pixelsearch_mode ? "ON" : "OFF"), 0, 100
     Sleep 1000
     ToolTip
 }
 
-toggleCheckStateMode(*) {
-    global checkstate_mode
-    checkstate_mode := !checkstate_mode
-    myGUI["GameStateStatus"].Text := "GameState Check: " (checkstate_mode ? "ON" : "OFF")
-    ToolTip "GameState Check Mode: " (checkstate_mode ? "ON" : "OFF"), 0, 100
+BB_toggleCheckStateMode(*) {
+    global BB_checkstate_mode, BB_myGUI
+    BB_checkstate_mode := !BB_checkstate_mode
+    BB_myGUI["GameStateStatus"].Text := "GameState Check: " (BB_checkstate_mode ? "ON" : "OFF")
+    ToolTip "GameState Check Mode: " (BB_checkstate_mode ? "ON" : "OFF"), 0, 100
     Sleep 1000
     ToolTip
 }
 
-updateStatus(text) {
-    myGUI["Status"].Text := "Status: " text
+BB_updateStatus(text) {
+    global BB_myGUI
+    BB_myGUI["Status"].Text := "Status: " text
 }
 
-findRobloxWindows() {
+BB_findRobloxWindows() {
+    global BB_myGUI, BB_WINDOW_TITLE, BB_EXCLUDED_TITLES
     windows := []
     for hwnd in WinGetList() {
         title := WinGetTitle(hwnd)
-        if (InStr(title, WINDOW_TITLE) && !hasExcludedTitle(title) && WinGetProcessName(hwnd) = "RobloxPlayerBeta.exe") {
+        if (InStr(title, BB_WINDOW_TITLE) && !BB_hasExcludedTitle(title) && WinGetProcessName(hwnd) = "RobloxPlayerBeta.exe") {
             windows.Push(hwnd)
         }
     }
-    myGUI["WindowCount"].Text := "Active Windows: " windows.Length
+    BB_myGUI["WindowCount"].Text := "Active Windows: " windows.Length
     return windows
 }
 
-hasExcludedTitle(title) {
-    for excluded in EXCLUDED_TITLES {
+BB_hasExcludedTitle(title) {
+    global BB_EXCLUDED_TITLES
+    for excluded in BB_EXCLUDED_TITLES {
         if InStr(title, excluded)
             return true
     }
     return false
 }
 
-bringToFront(hwnd) {
+BB_bringToFront(hwnd) {
     WinRestore(hwnd)
     WinActivate(hwnd)
     WinWaitActive(hwnd, , 2)
-    return ErrorLevel = 0
+    return WinWaitActive(hwnd, , 2) != 0
 }
 
-pressKey(key, duration, repeat) {
+BB_pressKey(key, duration, repeat) {
     Loop repeat {
         Send "{" key " down}"
         Sleep duration
@@ -251,223 +292,196 @@ pressKey(key, duration, repeat) {
     }
 }
 
-clickAt(x, y) {
-    Random delay, CLICK_DELAY_MIN, CLICK_DELAY_MAX
+BB_clickAt(x, y) {
+    global BB_CLICK_DELAY_MIN, BB_CLICK_DELAY_MAX
+    delay := Random(BB_CLICK_DELAY_MIN, BB_CLICK_DELAY_MAX)
     MouseMove x, y, 10
     Sleep delay
     Click
 }
 
-inventoryClick() {
+BB_inventoryClick() {
+    global BB_clickAt
     MouseGetPos(&x, &y)
     Send "{f down}"
     Sleep 200
     Send "{f up}"
     Sleep 500
-    clickAt(x, y)
+    BB_clickAt(x, y)
     Sleep 500
     Send "{f down}"
     Sleep 200
     Send "{f up}"
 }
 
-pixelSearchColor(&FoundX, &FoundY) {
-    PixelSearch &FoundX, &FoundY, PIXELSEARCH_AREA[1], PIXELSEARCH_AREA[2], PIXELSEARCH_AREA[3], PIXELSEARCH_AREA[4], PIXELSEARCH_COLOR, PIXELSEARCH_VARIATION
-    if ErrorLevel {
-        logAction("PixelSearch failed for color " PIXELSEARCH_COLOR " in area " PIXELSEARCH_AREA[1] "," PIXELSEARCH_AREA[2] "-" PIXELSEARCH_AREA[3] "," PIXELSEARCH_AREA[4])
+BB_pixelSearchColor(&FoundX, &FoundY) {
+    global BB_PIXELSEARCH_AREA, BB_PIXELSEARCH_COLOR, BB_PIXELSEARCH_VARIATION
+    PixelSearch &FoundX, &FoundY, BB_PIXELSEARCH_AREA[1], BB_PIXELSEARCH_AREA[2], BB_PIXELSEARCH_AREA[3], BB_PIXELSEARCH_AREA[4], BB_PIXELSEARCH_COLOR, BB_PIXELSEARCH_VARIATION
+    if (FoundX = "" || FoundY = "") {
+        BB_logAction("PixelSearch failed for color " BB_PIXELSEARCH_COLOR " in area " BB_PIXELSEARCH_AREA[1] "," BB_PIXELSEARCH_AREA[2] "-" BB_PIXELSEARCH_AREA[3] "," BB_PIXELSEARCH_AREA[4])
         return false
     }
     return true
 }
 
-templateMatch(templateName, &FoundX, &FoundY) {
-    ; Use AutoHotkey's built-in ImageSearch to find the template on the screen
-    templatePath := TEMPLATE_FOLDER "\" TEMPLATES[templateName]
+BB_templateMatch(templateName, &FoundX, &FoundY) {
+    global BB_TEMPLATE_FOLDER, BB_TEMPLATES
+    templatePath := BB_TEMPLATE_FOLDER "\" BB_TEMPLATES[templateName]
+    
     if !FileExist(templatePath) {
-        logAction("Template not found: " templatePath)
+        BB_logAction("Template not found: " templatePath)
         return false
     }
-
-    ; Search the entire screen for the template image
-    ; Variation of 0 for exact match; adjust if needed for more leniency
-    ImageSearch &FoundX, &FoundY, 0, 0, A_ScreenWidth, A_ScreenHeight, *0 %templatePath%
-    if ErrorLevel {
-        logAction("Template match failed for: " templateName)
-        return false
-    }
-
-    ; Adjust coordinates to the center of the found image for clicking
-    ImageInfo := ImageGetInfo(templatePath)
-    if ImageInfo {
-        FoundX += ImageInfo.Width // 2
-        FoundY += ImageInfo.Height // 2
-    }
-
-    return true
-}
-
-; Helper function to get image dimensions (width and height) for centering clicks
-ImageGetInfo(imagePath) {
+    
     try {
-        ; Use GDI (not GDI+) to get image dimensions without external libraries
-        hBitmap := DllCall("LoadImage", "UInt", 0, "Str", imagePath, "UInt", 0, "Int", 0, "Int", 0, "UInt", 0x10, "Ptr")
-        if !hBitmap {
-            logAction("Failed to load image for dimensions: " imagePath)
-            return false
-        }
-
-        VarSetCapacity(BITMAP, 32, 0)
-        DllCall("GetObject", "Ptr", hBitmap, "Int", 32, "Ptr", &BITMAP)
-        width := NumGet(BITMAP, 4, "Int")
-        height := NumGet(BITMAP, 8, "Int")
-        DllCall("DeleteObject", "Ptr", hBitmap)
-        return {Width: width, Height: height}
+        ImageSearch(&FoundX, &FoundY, 0, 0, A_ScreenWidth, A_ScreenHeight, "*0 " templatePath)
+        return true
     } catch {
-        logAction("Error getting image dimensions for: " imagePath)
+        BB_logAction("Template match failed for: " templateName)
         return false
     }
 }
 
-runMovementPattern(*) {
-    global running, paused
-    if !running || paused
+BB_runMovementPattern(*) {
+    global BB_running, BB_paused, BB_MOVEMENT_PATTERNS
+    if !BB_running || BB_paused
         return
     ToolTip "Running Movement: circle", 0, 100
-    for seq in MOVEMENT_PATTERNS["circle"] {
-        pressKey(seq[1], seq[2], seq[3])
+    for seq in BB_MOVEMENT_PATTERNS["circle"] {
+        BB_pressKey(seq[1], seq[2], seq[3])
     }
     Sleep 1000
     ToolTip
 }
 
-autoHatch() {
+BB_autoHatch() {
     FoundX := 0, FoundY := 0
-    if templateMatch("hatch_button", &FoundX, &FoundY) {
-        clickAt(FoundX, FoundY)
+    if BB_templateMatch("hatch_button", &FoundX, &FoundY) {
+        BB_clickAt(FoundX, FoundY)
     } else {
-        logAction("autoHatch failed to detect hatch_button")
+        BB_logAction("BB_autoHatch failed to detect hatch_button")
     }
 }
 
-autoRebirth() {
+BB_autoRebirth() {
     FoundX := 0, FoundY := 0
-    if templateMatch("rebirth_ready", &FoundX, &FoundY) {
-        clickAt(FoundX, FoundY)
+    if BB_templateMatch("rebirth_ready", &FoundX, &FoundY) {
+        BB_clickAt(FoundX, FoundY)
     } else {
-        logAction("autoRebirth failed to detect rebirth_ready")
+        BB_logAction("BB_autoRebirth failed to detect rebirth_ready")
     }
 }
 
-autoUpgrade() {
+BB_autoUpgrade() {
     FoundX := 0, FoundY := 0
-    if templateMatch("upgrade_button", &FoundX, &FoundY) {
-        clickAt(FoundX, FoundY)
+    if BB_templateMatch("upgrade_button", &FoundX, &FoundY) {
+        BB_clickAt(FoundX, FoundY)
     } else {
-        logAction("autoUpgrade failed to detect upgrade_button")
+        BB_logAction("BB_autoUpgrade failed to detect upgrade_button")
     }
 }
 
-autoCollect() {
+BB_autoCollect() {
     FoundX := 0, FoundY := 0
-    if pixelSearchColor(&FoundX, &FoundY) {
-        clickAt(FoundX, FoundY)
-        logAction("Collected item at x=" FoundX ", y=" FoundY)
+    if BB_pixelSearchColor(&FoundX, &FoundY) {
+        BB_clickAt(FoundX, FoundY)
+        BB_logAction("Collected item at x=" FoundX ", y=" FoundY)
     }
 }
 
-autoConvert() {
+BB_autoConvert() {
     FoundX := 0, FoundY := 0
-    if templateMatch("convert_button", &FoundX, &FoundY) {
-        clickAt(FoundX, FoundY)
-        logAction("Converted resource at x=" FoundX ", y=" FoundY)
+    if BB_templateMatch("convert_button", &FoundX, &FoundY) {
+        BB_clickAt(FoundX, FoundY)
+        BB_logAction("Converted resource at x=" FoundX ", y=" FoundY)
     } else {
-        logAction("autoConvert failed to detect convert_button")
+        BB_logAction("BB_autoConvert failed to detect convert_button")
     }
 }
 
-detectUIElement(element) {
+BB_detectUIElement(element) {
     FoundX := 0, FoundY := 0
-    if templateMatch(element, &FoundX, &FoundY) {
-        clickAt(FoundX, FoundY)
+    if BB_templateMatch(element, &FoundX, &FoundY) {
+        BB_clickAt(FoundX, FoundY)
     }
 }
 
-checkGameState() {
+BB_checkGameState() {
     FoundX := 0, FoundY := 0
-    if pixelSearchColor(&FoundX, &FoundY) {
-        logAction("Game state: Resource detected at x=" FoundX ", y=" FoundY)
+    if BB_pixelSearchColor(&FoundX, &FoundY) {
+        BB_logAction("Game state: Resource detected at x=" FoundX ", y=" FoundY)
     }
 }
 
-automationLoop() {
-    global running, paused, inventory_mode, pixelsearch_mode, checkstate_mode
-    if (!running || paused)
+BB_automationLoop() {
+    global BB_running, BB_paused, BB_inventory_mode, BB_pixelsearch_mode, BB_checkstate_mode
+    global BB_KEY_SEQUENCE, BB_coords, BB_ENABLED_FUNCTIONS, BB_INTERACTION_DURATION, BB_ENABLE_GENERAL_ACTIONS
+    if (!BB_running || BB_paused)
         return
 
-    windows := findRobloxWindows()
+    windows := BB_findRobloxWindows()
     if (windows.Length = 0) {
-        updateStatus("No Roblox windows found")
+        BB_updateStatus("No Roblox windows found")
         Sleep 10000
         return
     }
 
-    updateStatus("Running (" windows.Length " windows)")
+    BB_updateStatus("Running (" windows.Length " windows)")
     for hwnd in windows {
-        if (!running || paused)
+        if (!BB_running || BB_paused)
             break
-        if bringToFront(hwnd) {
+        if BB_bringToFront(hwnd) {
             startTime := A_TickCount
-            while (A_TickCount - startTime < INTERACTION_DURATION && running && !paused) {
-                if ENABLE_GENERAL_ACTIONS {
-                    for seq in KEY_SEQUENCE {
-                        pressKey(seq[1], seq[2], seq[3])
+            while (A_TickCount - startTime < BB_INTERACTION_DURATION && BB_running && !BB_paused) {
+                if BB_ENABLE_GENERAL_ACTIONS {
+                    for seq in BB_KEY_SEQUENCE {
+                        BB_pressKey(seq[1], seq[2], seq[3])
                     }
-                    if (coords.Length > 0) {
-                        for coord in coords {
-                            clickAt(coord[1], coord[2])
+                    if (BB_coords.Length > 0) {
+                        for coord in BB_coords {
+                            BB_clickAt(coord[1], coord[2])
                         }
                     }
                 }
-                for func in ENABLED_FUNCTIONS {
+                for func in BB_ENABLED_FUNCTIONS {
                     if func = "autoHatch"
-                        autoHatch()
+                        BB_autoHatch()
                     else if func = "autoRebirth"
-                        autoRebirth()
+                        BB_autoRebirth()
                     else if func = "autoUpgrade"
-                        autoUpgrade()
+                        BB_autoUpgrade()
                     else if func = "autoCollect"
-                        autoCollect()
+                        BB_autoCollect()
                     else if func = "autoConvert"
-                        autoConvert()
+                        BB_autoConvert()
                 }
-                if inventory_mode
-                    inventoryClick()
-                if pixelsearch_mode {
+                if BB_inventory_mode
+                    BB_inventoryClick()
+                if BB_pixelsearch_mode {
                     FoundX := 0, FoundY := 0
-                    if pixelSearchColor(&FoundX, &FoundY)
-                        clickAt(FoundX, FoundY)
+                    if BB_pixelSearchColor(&FoundX, &FoundY)
+                        BB_clickAt(FoundX, FoundY)
                 }
-                if checkstate_mode
-                    checkGameState()
+                if BB_checkstate_mode
+                    BB_checkGameState()
                 Sleep Random(800, 1200)
             }
         }
     }
-    updateStatus("Waiting (" CYCLE_INTERVAL // 1000 "s)")
-    Sleep CYCLE_INTERVAL
+    BB_updateStatus("Waiting (" BB_CYCLE_INTERVAL // 1000 "s)")
+    Sleep BB_CYCLE_INTERVAL
 }
 
-logAction(action) {
-    if ENABLE_LOGGING {
-        FileAppend A_Now ": " action "`n", logFile
-    }
+BB_loadConfigFromFile(*) {
+    BB_loadConfig()
+    MsgBox "Configuration reloaded from " BB_CONFIG_FILE
 }
 
-loadConfigFromFile(*) {
-    loadConfig()
-    MsgBox "Configuration reloaded from " CONFIG_FILE
+BB_exitApp(*) {
+    ExitApp()
 }
 
-loadConfig()
-setupGUI()
-TrayTip "🐝 BeeBrained’s PS99 Template", "Ready! Press " START_KEY " to start.", 10
+; Initialize the script
+BB_loadConfig()  ; Load configuration first
+BB_setupGUI()
+TrayTip "Ready! Press " BB_START_KEY " to start.", "🐝 BeeBrained's PS99 Template", 0x10
