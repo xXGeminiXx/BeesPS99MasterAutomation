@@ -1,0 +1,80 @@
+[2025-03-30 12:58:41] Attempting to download button.png from https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/button.png
+[2025-03-30 12:58:41] Attempting PowerShell download for: https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/button.png
+[2025-03-30 12:58:43] ERROR: PowerShell download failed: PowerShell exited with code 1
+[2025-03-30 12:58:43] ERROR: downloadWithStatus failed: Download failed
+[2025-03-30 12:58:43] ERROR: Download failed: Download failed
+[2025-03-30 12:58:43] ERROR: No backup available for button.png
+[2025-03-30 12:58:43] File assumed valid (skipped FileOpen check): C:\Apps\BMAT\templates\connection_lost.png
+[2025-03-30 12:58:43] Template already exists and is valid: connection_lost.png
+[2025-03-30 12:58:43] Attempting to download dialog_button.png from https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/dialog_button.png
+[2025-03-30 12:58:43] Attempting PowerShell download for: https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/dialog_button.png
+[2025-03-30 12:58:45] ERROR: PowerShell download failed: PowerShell exited with code 1
+[2025-03-30 12:58:45] ERROR: downloadWithStatus failed: Download failed
+[2025-03-30 12:58:45] ERROR: Download failed: Download failed
+[2025-03-30 12:58:45] ERROR: No backup available for dialog_button.png
+[2025-03-30 12:58:45] File assumed valid (skipped FileOpen check): C:\Apps\BMAT\templates\error_message.png
+[2025-03-30 12:58:45] Template already exists and is valid: error_message.png
+[2025-03-30 12:58:45] File assumed valid (skipped FileOpen check): C:\Apps\BMAT\templates\error_message_alt1.png
+[2025-03-30 12:58:45] Template already exists and is valid: error_message_alt1.png
+[2025-03-30 12:58:45] Attempting to download menu_button.png from https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/menu_button.png
+[2025-03-30 12:58:45] Attempting PowerShell download for: https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/menu_button.png
+[2025-03-30 12:58:47] ERROR: PowerShell download failed: PowerShell exited with code 1
+[2025-03-30 12:58:47] ERROR: downloadWithStatus failed: Download failed
+[2025-03-30 12:58:47] ERROR: Download failed: Download failed
+[2025-03-30 12:58:47] ERROR: No backup available for menu_button.png
+[2025-03-30 12:58:47] Attempting to download navigation_button.png from https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/navigation_button.png
+[2025-03-30 12:58:47] Attempting PowerShell download for: https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/navigation_button.png
+[2025-03-30 12:58:48] ERROR: PowerShell download failed: PowerShell exited with code 1
+[2025-03-30 12:58:48] ERROR: downloadWithStatus failed: Download failed
+[2025-03-30 12:58:48] ERROR: Download failed: Download failed
+[2025-03-30 12:58:48] ERROR: No backup available for navigation_button.png
+[2025-03-30 12:58:48] Template validation summary: 0/0 templates are valid
+[2025-03-30 12:58:48] Initialized performance data in loadConfig
+[2025-03-30 12:58:48] Adjusted click delays: Min=500, Max=1500 based on performance
+[2025-03-30 12:58:48] Loaded configuration values from C:\Apps\BMAT\bmat_config.ini
+[2025-03-30 12:58:49] Registered all hotkeys successfully
+[2025-03-30 12:58:49] Resolution scaling: 1.00x1.00
+[2025-03-30 12:58:49] Attempting to download button.png from https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/button.png
+[2025-03-30 12:58:49] Attempting PowerShell download for: https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/button.png
+[2025-03-30 12:58:50] ERROR: PowerShell download failed: PowerShell exited with code 1
+[2025-03-30 12:58:50] ERROR: downloadWithStatus failed: Download failed
+[2025-03-30 12:58:50] ERROR: Download failed: Download failed
+[2025-03-30 12:58:50] ERROR: No backup available for button.png
+[2025-03-30 12:58:50] File assumed valid (skipped FileOpen check): C:\Apps\BMAT\templates\connection_lost.png
+[2025-03-30 12:58:50] Template already exists and is valid: connection_lost.png
+[2025-03-30 12:58:50] Attempting to download dialog_button.png from https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/dialog_button.png
+[2025-03-30 12:58:50] Attempting PowerShell download for: https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/dialog_button.png
+[2025-03-30 12:58:52] ERROR: PowerShell download failed: PowerShell exited with code 1
+[2025-03-30 12:58:52] ERROR: downloadWithStatus failed: Download failed
+[2025-03-30 12:58:52] ERROR: Download failed: Download failed
+[2025-03-30 12:58:52] ERROR: No backup available for dialog_button.png
+[2025-03-30 12:58:52] File assumed valid (skipped FileOpen check): C:\Apps\BMAT\templates\error_message.png
+[2025-03-30 12:58:52] Template already exists and is valid: error_message.png
+[2025-03-30 12:58:52] File assumed valid (skipped FileOpen check): C:\Apps\BMAT\templates\error_message_alt1.png
+[2025-03-30 12:58:52] Template already exists and is valid: error_message_alt1.png
+[2025-03-30 12:58:52] Attempting to download menu_button.png from https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/menu_button.png
+[2025-03-30 12:58:52] Attempting PowerShell download for: https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/menu_button.png
+[2025-03-30 12:58:53] ERROR: PowerShell download failed: PowerShell exited with code 1
+[2025-03-30 12:58:53] ERROR: downloadWithStatus failed: Download failed
+[2025-03-30 12:58:53] ERROR: Download failed: Download failed
+[2025-03-30 12:58:53] ERROR: No backup available for menu_button.png
+[2025-03-30 12:58:53] Attempting to download navigation_button.png from https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/navigation_button.png
+[2025-03-30 12:58:53] Attempting PowerShell download for: https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/navigation_button.png
+[2025-03-30 12:58:55] ERROR: PowerShell download failed: PowerShell exited with code 1
+[2025-03-30 12:58:55] ERROR: downloadWithStatus failed: Download failed
+[2025-03-30 12:58:55] ERROR: Download failed: Download failed
+[2025-03-30 12:58:55] ERROR: No backup available for navigation_button.png
+[2025-03-30 12:58:55] Template validation summary: 0/0 templates are valid
+[2025-03-30 12:58:55] Initialized performance data in loadConfig
+[2025-03-30 12:58:55] Adjusted click delays: Min=500, Max=1500 based on performance
+[2025-03-30 12:58:55] Loaded configuration values from C:\Apps\BMAT\bmat_config.ini
+[2025-03-30 12:58:55] ERROR: Failed to check for updates (attempt 1): HTTP status 404 received
+[2025-03-30 12:58:55] Retrying in 2.0 seconds...
+[2025-03-30 12:58:57] ERROR: Failed to check for updates (attempt 2): HTTP status 404 received
+[2025-03-30 12:58:57] Retrying in 2.0 seconds...
+[2025-03-30 12:58:59] ERROR: Failed to check for updates (attempt 3): HTTP status 404 received
+[2025-03-30 12:58:59] ERROR: Failed to check for updates after 3 attempts
+[2025-03-30 12:58:59] Running in standard mode
+[2025-03-30 12:58:59] Anti-AFK timer will start when automation begins
+[2025-03-30 12:58:59] Script initialized. Press F1 to start automation.
+[2025-03-30 12:59:04] Script terminated

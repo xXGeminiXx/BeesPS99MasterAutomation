@@ -5,7 +5,8 @@
 ;
 ; A versatile automation powerhouse built for efficiency and flexibility,
 ; perfect for repetitive tasks in Pet Simulator 99 and beyond.
-; https://github.com/xXGeminiXx/BeesPS99MasterAutomation
+;
+; Repository: https://github.com/xXGeminiXx/BeesPS99MasterAutomation
 ;
 ; Created by: BeeBrained
 ; YouTube: @BeeBrained-PS99
@@ -15,17 +16,62 @@
 #SingleInstance Force
 DetectHiddenWindows True
 SetWorkingDir A_ScriptDir
-CoordMode "Mouse", "Screen"
-CoordMode "Pixel", "Screen"
-CoordMode "ImageSearch", "Screen"
-SendMode "Event"
+
+; Set coordinate modes
+CoordMode("Mouse", "Screen")
+CoordMode("Pixel", "Screen")
+SendMode("Event")
+
+; Create logs directory if it doesn't exist
+if !DirExist(A_ScriptDir "\logs")
+    DirCreate(A_ScriptDir "\logs")
+
+; Initialize BB_DEBUG early before it's used in any functions
+global BB_DEBUG := Map(
+    "enabled", true,  ; Enable debug by default
+    "level", 6,       ; Set to maximum debug level
+    "logTemplateMatches", true,
+    "logPerformance", true,
+    "logWindowUpdates", true,
+    "saveScreenshots", true
+)
+
+; Version information
+BB_VERSION := "2.0.0"
 
 ; ===================== GLOBAL VARIABLES =====================
-global BB_VERSION := "2.0.0"
-global BB_CONFIG_FILE := A_ScriptDir "\config.ini"
+; File System
+global BB_CONFIG_FILE := A_ScriptDir "\bmat_config.ini"
 global BB_LOG_FILE := A_ScriptDir "\logs\log_" . FormatTime(, "yyyyMMdd") . ".txt"
 global BB_TEMPLATE_DIR := A_ScriptDir "\templates"
 global BB_CONFIG_DIR := A_ScriptDir "\configs"
+global BB_TEMPLATE_FOLDER := A_ScriptDir "\templates"
+global BB_BACKUP_TEMPLATE_FOLDER := A_ScriptDir "\backup_templates"
+
+; Create necessary directories
+for dir in [BB_TEMPLATE_DIR, BB_CONFIG_DIR, BB_BACKUP_TEMPLATE_FOLDER] {
+    if !DirExist(dir)
+        DirCreate(dir)
+}
+
+; Ensure config file exists with proper settings
+if !FileExist(BB_CONFIG_FILE) {
+    defaultIni := "[Logging]`n"
+    defaultIni .= "ENABLE_LOGGING=true`n"
+    defaultIni .= "`n[Debug]`n"
+    defaultIni .= "ENABLED=true`n"
+    defaultIni .= "LEVEL=6`n"
+    defaultIni .= "LOG_TEMPLATE_MATCHES=true`n"
+    defaultIni .= "LOG_PERFORMANCE=true`n"
+    defaultIni .= "LOG_WINDOW_UPDATES=true`n"
+    defaultIni .= "SAVE_SCREENSHOTS=true`n"
+    
+    try {
+        FileAppend(defaultIni, BB_CONFIG_FILE)
+    } catch as err {
+        MsgBox("Failed to create default config file: " . err.Message, "Config Error", 0x10)
+    }
+}
 
 ; State Management
 global BB_automationState := "Idle"  ; Idle, Interacting, Processing, Navigating, Error
@@ -37,12 +83,13 @@ global BB_activeWindows := []
 global BB_currentWindow := 0
 global BB_FAILED_INTERACTION_COUNT := 0
 global BB_lastInteractionTime := 0
+global BB_stateHistory := []
+global BB_gameStateEnsured := false
+global BB_lastGameStateReset := 0
+global BB_currentState := "Unknown"
+global BB_lastError := "None"
 
-; Performance Metrics
-global BB_performanceStats := Map()
-global BB_templateCache := Map()
-
-; GUI Elements (will be initialized in BB_setupGUI)
+; GUI Elements
 global BB_mainGui := ""
 global BB_statusText := ""
 global BB_debugText := ""
@@ -50,7 +97,7 @@ global BB_configDropdown := ""
 global BB_commandPanel := ""
 global BB_debugControls := Map()
 
-; Error Recovery
+; Error Handling
 global BB_MAX_FAILED_INTERACTIONS := 5
 global BB_ERROR_COLORS := ["0xFF0000", "0x990000"]
 global BB_ERROR_COLOR_THRESHOLD := 15
@@ -60,101 +107,77 @@ global BB_ERROR_MAX_RETRIES := 5        ; Maximum retry attempts
 global BB_ERROR_RETRY_ATTEMPTS := 0     ; Current retry attempt count
 global BB_ERROR_MAX_DELAY := 30000      ; Maximum delay cap (30 seconds)
 
-; Create required directories
-if !DirExist(A_ScriptDir "\logs")
-    DirCreate(A_ScriptDir "\logs")
-if !DirExist(A_ScriptDir "\configs")
-    DirCreate(A_ScriptDir "\configs")
-if !DirExist(A_ScriptDir "\templates")
-    DirCreate(A_ScriptDir "\templates")
+; Performance and Caching
+global BB_performanceStats := Map()
+global BB_templateCache := Map()
+global BB_TEMPLATES := Map()
+global BB_missingTemplatesReported := Map()
+global BB_imageCache := Map()
+global BB_performanceData := Map()
+global BB_TEMPLATE_SUCCESS_METRIC := Map()
 
-; Ensure clean shutdown
-OnExit BB_cleanup
+; Version and Core State
+global BB_VERSION := "2.0.0"
+global BB_running := false
+global BB_paused := false
+global BB_SAFE_MODE := false
+global BB_ENABLE_LOGGING := true
+global BB_logFile := A_ScriptDir "\bmat_log.txt"
 
-; Load configuration
-if !FileExist(BB_CONFIG_FILE) {
-    BB_createDefaultConfig()
-    BB_log("Created default config.ini")
-}
+; Hotkeys
+global BB_TELEPORT_HOTKEY := "t"
+global BB_INVENTORY_HOTKEY := "f"
+global BB_START_STOP_HOTKEY := "F2"
+global BB_PAUSE_HOTKEY := "p"
+global BB_EXIT_HOTKEY := "Escape"
+global BB_JUMP_HOTKEY := "Space"
 
-; Initialize logging
-BB_log("=== BMAT v" . BB_VERSION . " Started ===")
+; State Timeouts
+global BB_STATE_TIMEOUTS := Map(
+    "Idle", 30000,            ; 30 seconds
+    "Interacting", 30000,     ; 30 seconds
+    "Navigating", 30000,      ; 30 seconds
+    "Processing", 60000,      ; 60 seconds
+    "Error", 30000            ; 30 seconds
+)
+global BB_stateStartTime := 0
+global BB_currentStateTimeout := 0
+global BB_GAME_STATE_COOLDOWN := 30000  ; 30 seconds cooldown
 
-; ===================== Main Hotkeys =====================
-; F1: Start automation
-; F2: Start/Stop automation
-; P: Pause/Resume automation
-; F: Open inventory
-; T: Teleport menu
-; Escape: Exit application
-;
-; == Testing Instructions ==
-; 1. Ensure Roblox and Pet Simulator 99 are installed and running.
-; 2. Place the script in a folder with write permissions (e.g., C:\Apps\BPAT).
-; 3. Run the script as administrator to ensure proper window activation.
-; 4. Use F1 to start automation, F2 to toggle, P to pause/resume, and Esc to exit.
-; 5. Monitor the GUI and log file (bpat_log.txt) for errors.
-; 6. If templates fail to validate, ensure an internet connection and check the templates folder.
-;
-; == Debug Mode ==
-; Run with "debug" parameter to enable debug mode: .\BPAT.ahk debug
-; Debug Mode Hotkeys:
-; F6: Capture screenshot of current window
-; F7: Check hatch menu state
-; F8: Check automation state
-; F9: Display current automation status
-; F10: Show performance metrics
-; F11: Cycle through debug levels (1-5)
-; F12: Toggle debug mode on/off
-;
-; == Features ==
-; - Robust window detection and management
-; - Anti-AFK system with random movements
-; - Smart teleportation system
-; - Template-based UI detection
-; - Performance monitoring and optimization
-; - Comprehensive error detection and recovery
-; - Debug tools and logging system
-;
-; == Known Issues ==
-; - Template matching may fail if game resolution or UI scaling changes.
-;   Adjust templates or confidence levels in BB_smartTemplateMatch if needed.
-; - Window activation may fail on some systems. Ensure Roblox is not minimized
-;   and run as admin.
-; - Assumes default Roblox hotkeys ('f' to open inventory). Update config if different.
-; - Reconnect in BB_resetGameState may need manual intervention if Roblox URL
-;   launches aren't set up.
-; - Window focus can be lost when clicking near top of window - script now uses
-;   safer click positions.
-;
-; == Configuration ==
-; All settings can be customized in bpat_config.ini:
-; - Timing intervals for actions and checks
-; - Window titles and exclusions
-; - Hotkey assignments
-; - Template paths and thresholds
-; - Debug and logging options
-;
-; == Support ==
-; For issues, updates, and documentation:
-; https://github.com/BeeBrained/BPAT/issues
+; Resolution Scaling
+global BB_BASE_WIDTH := 1920
+global BB_BASE_HEIGHT := 1080
+global BB_SCALE_X := 1.0
+global BB_SCALE_Y := 1.0
+global BB_SCREEN_WIDTH := A_ScreenWidth
+global BB_SCREEN_HEIGHT := A_ScreenHeight
 
-; ===================== Run as Admin =====================
+; Timing and Intervals
+global BB_CLICK_DELAY_MIN := 500        ; 0.5 seconds
+global BB_CLICK_DELAY_MAX := 1500       ; 1.5 seconds
+global BB_INTERACTION_DURATION := 5000  ; 5 seconds
+global BB_CYCLE_INTERVAL := 180000      ; 3 minutes
+global BB_ANTI_AFK_INTERVAL := 300000   ; 5 minutes
+global BB_RECONNECT_CHECK_INTERVAL := 10000  ; 10 seconds
+global BB_WINDOW_CHECK_INTERVAL := 5000  ; 5 seconds
+
+; Window Management
+global BB_WINDOW_TITLE := "Roblox"
+global BB_EXCLUDED_TITLES := []
+global BB_active_windows := []
+global BB_last_window_check := 0
+
+; Template Management
+global BB_TEMPLATE_RETRIES := 3
+global BB_validTemplates := 0
+global BB_totalTemplates := 0
+
+; ===================== RUN AS ADMIN =====================
 
 if !A_IsAdmin {
     Run("*RunAs " . A_ScriptFullPath)
     ExitApp()
 }
-
-; Initialize BB_DEBUG early before it's used in any functions
-global BB_DEBUG := Map(
-    "enabled", false,
-    "level", 1,
-    "logTemplateMatches", false,
-    "logPerformance", false,
-    "logWindowUpdates", false,
-    "saveScreenshots", false
-)
 
 ; ===================== GLOBAL VARIABLES =====================
 ; Version and Core State
@@ -164,7 +187,8 @@ global BB_paused := false
 global BB_SAFE_MODE := false
 global BB_ENABLE_LOGGING := true
 global BB_FAILED_INTERACTION_COUNT := 0  ; Tracks failed interactions for error recovery
-global BB_logFile := A_ScriptDir "\bpat_log.txt"
+global BB_logFile := A_ScriptDir "\bmat_log.txt"
+global BB_myGUI := ""  ; Initialize GUI object
 
 ; Hotkeys
 global BB_TELEPORT_HOTKEY := "t"
@@ -576,7 +600,7 @@ BB_updateStatusAndLog(message, updateGUI := true, isError := false, takeScreensh
                     ; If all retries failed, try to create a new log file with timestamp
                     try {
                         timestamp := FormatTime(A_Now, "yyyyMMdd_HHmmss")
-                        newLogFile := A_ScriptDir "\bpat_log_" . timestamp . ".txt"
+                        newLogFile := A_ScriptDir "\bmat_log_" . timestamp . ".txt"
                         FileAppend(logMessage, newLogFile)
                         BB_updateStatusAndLog("Created new log file: " . newLogFile, true, true)
                     } catch {
@@ -650,35 +674,30 @@ BB_validateImage(filePath) {
 ;   templateName: The name of the template to download.
 ;   fileName: The name of the file to download.
 BB_downloadTemplate(templateName, fileName) {
-    global BB_TEMPLATE_FOLDER, BB_BACKUP_TEMPLATE_FOLDER, BB_validTemplates, BB_totalTemplates
-    BB_totalTemplates++
-    templateUrl := "https://raw.githubusercontent.com/BeeBrained/BPAT/main/templates/" . fileName
-    localPath := BB_TEMPLATE_FOLDER . "\" . fileName
-    backupPath := BB_BACKUP_TEMPLATE_FOLDER . "\" . fileName
+    local localPath := BB_TEMPLATE_DIR "\" fileName
+    local backupPath := BB_BACKUP_TEMPLATE_FOLDER "\" fileName
+    local templateUrl := "https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/templates/" . fileName
 
-    if !FileExist(localPath) {
-        try {
-            BB_updateStatusAndLog("Attempting to download " . fileName . " from " . templateUrl)
-            downloadWithStatus(templateUrl, localPath)
+    try {
+        ; First check if template exists and is valid
+        if FileExist(localPath) {
             validationResult := BB_validateImage(localPath)
             if (validationResult = "Valid" || InStr(validationResult, "Assumed Valid")) {
-                BB_validTemplates++
-                BB_updateStatusAndLog("Downloaded and validated template: " . fileName)
-            } else {
-                BB_updateStatusAndLog("Validation failed: " . validationResult, true, true)
-                if FileExist(backupPath) {
-                    FileCopy(backupPath, localPath, 1)
-                    validationResult := BB_validateImage(localPath)
-                    if (validationResult = "Valid" || InStr(validationResult, "Assumed Valid")) {
-                        BB_validTemplates++
-                        BB_updateStatusAndLog("Using backup template for " . fileName)
-                    } else {
-                        BB_updateStatusAndLog("Backup invalid: " . validationResult, true, true)
-                    }
-                }
+                BB_updateStatusAndLog("Template already exists and is valid: " . fileName)
+                return true
             }
-        } catch as err {
-            BB_updateStatusAndLog("Download failed: " . err.Message, true, true)
+            BB_updateStatusAndLog("Existing template invalid: " . validationResult . " - Attempting redownload", true, true)
+        }
+
+        ; Download template
+        BB_updateStatusAndLog("Attempting to download " . fileName . " from " . templateUrl)
+        downloadWithStatus(templateUrl, localPath)
+        validationResult := BB_validateImage(localPath)
+        if (validationResult = "Valid" || InStr(validationResult, "Assumed Valid")) {
+            BB_validTemplates++
+            BB_updateStatusAndLog("Downloaded and validated template: " . fileName)
+        } else {
+            BB_updateStatusAndLog("Validation failed: " . validationResult, true, true)
             if FileExist(backupPath) {
                 FileCopy(backupPath, localPath, 1)
                 validationResult := BB_validateImage(localPath)
@@ -688,30 +707,21 @@ BB_downloadTemplate(templateName, fileName) {
                 } else {
                     BB_updateStatusAndLog("Backup invalid: " . validationResult, true, true)
                 }
-            } else {
-                BB_updateStatusAndLog("No backup available for " . fileName, true, true)
             }
         }
-    } else {
-        validationResult := BB_validateImage(localPath)
-        if (validationResult = "Valid" || InStr(validationResult, "Assumed Valid")) {
-            BB_validTemplates++
-            BB_updateStatusAndLog("Template already exists and is valid: " . fileName)
-        } else {
-            BB_updateStatusAndLog("Existing template invalid: " . validationResult . " - Attempting redownload", true, true)
-            try {
-                BB_updateStatusAndLog("Attempting to redownload " . fileName . " from " . templateUrl)
-                downloadWithStatus(templateUrl, localPath)
-                validationResult := BB_validateImage(localPath)
-                if (validationResult = "Valid" || InStr(validationResult, "Assumed Valid")) {
-                    BB_validTemplates++
-                    BB_updateStatusAndLog("Redownloaded and validated template: " . fileName)
-                } else {
-                    BB_updateStatusAndLog("Redownloaded template invalid: " . validationResult, true, true)
-                }
-            } catch as err {
-                BB_updateStatusAndLog("Redownload failed: " . err.Message, true, true)
+    } catch as err {
+        BB_updateStatusAndLog("Download failed: " . err.Message, true, true)
+        if FileExist(backupPath) {
+            FileCopy(backupPath, localPath, 1)
+            validationResult := BB_validateImage(localPath)
+            if (validationResult = "Valid" || InStr(validationResult, "Assumed Valid")) {
+                BB_validTemplates++
+                BB_updateStatusAndLog("Using backup template for " . fileName)
+            } else {
+                BB_updateStatusAndLog("Backup invalid: " . validationResult, true, true)
             }
+        } else {
+            BB_updateStatusAndLog("No backup available for " . fileName, true, true)
         }
     }
 }
@@ -724,28 +734,48 @@ BB_downloadTemplate(templateName, fileName) {
 ;   - Uses PowerShell to download files
 BB_httpDownload(url, dest) {
     BB_updateStatusAndLog("Attempting PowerShell download for: " . url)
-    psCommand := "(New-Object System.Net.WebClient).DownloadFile('" . url . "','" . dest . "')"
+    
+    ; Create a more robust PowerShell command with error handling and TLS 1.2
+    psCommand := "
+    (
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
+        try {
+            $ProgressPreference = 'SilentlyContinue';
+            $wc = New-Object System.Net.WebClient;
+            $wc.Headers.Add('User-Agent', 'PowerShell/7.0');
+            $wc.DownloadFile('" . url . "', '" . dest . "');
+            if (Test-Path '" . dest . "') {
+                $size = (Get-Item '" . dest . "').Length;
+                if ($size -gt 0) { exit 0; }
+                else { Write-Error 'Downloaded file is empty'; exit 1; }
+            }
+            else { Write-Error 'File not created'; exit 1; }
+        }
+        catch {
+            Write-Error $_.Exception.Message;
+            exit 1;
+        }
+    )"
+    
     try {
         SplitPath(dest, , &dir)
         if !DirExist(dir) {
             DirCreate(dir)
             BB_updateStatusAndLog("Created directory: " . dir)
         }
-        exitCode := RunWait("PowerShell -NoProfile -Command " . Chr(34) . psCommand . Chr(34), , "Hide")
+        
+        exitCode := RunWait('PowerShell -NoProfile -ExecutionPolicy Bypass -Command "' . psCommand . '"', , "Hide")
         if (exitCode != 0) {
             throw Error("PowerShell exited with code " . exitCode)
         }
-        maxWait := 10
-        loop maxWait {
-            if FileExist(dest) {
-                fileSize := FileGetSize(dest)
-                if (fileSize > 0) {
-                    BB_updateStatusAndLog("Download succeeded using PowerShell => " . dest . " (Size: " . fileSize . " bytes)")
-                    Sleep(1000)
-                    return true
-                }
+        
+        if FileExist(dest) {
+            fileSize := FileGetSize(dest)
+            if (fileSize > 0) {
+                BB_updateStatusAndLog("Download succeeded using PowerShell => " . dest . " (Size: " . fileSize . " bytes)")
+                Sleep(1000)
+                return true
             }
-            Sleep(1000)
         }
         throw Error("File not created or empty after download")
     } catch as err {
@@ -815,7 +845,7 @@ BB_clickAt(x, y) {
     }
     
     hwnd := WinGetID("A")
-    if (!hwnd || WinGetProcessName(hwnd) != "RobloxPlayerBeta.exe") {
+    if (!hwnd || WinGetProcessName(hwnd) != "RobloxPlayEerBeta.exe") {
         BB_updateStatusAndLog("No Roblox window active for clicking at x=" . x . ", y=" . y, true)
         return false
     }
@@ -931,6 +961,10 @@ BB_loadConfig() {
     global BB_SAFE_MODE
     global BB_TELEPORT_HOTKEY, BB_INVENTORY_HOTKEY, BB_START_STOP_HOTKEY, BB_PAUSE_HOTKEY, BB_EXIT_HOTKEY, BB_JUMP_HOTKEY
     global BB_performanceData
+    global BB_ENABLE_LOGGING  ; Just declare, don't initialize here
+    
+    ; Load logging settings
+    BB_ENABLE_LOGGING := IniRead(BB_CONFIG_FILE, "Logging", "ENABLE_LOGGING", true)
     
     ; Color globals
     global BB_ERROR_COLORS, BB_STATUS_GREEN, BB_STATUS_RED
@@ -941,13 +975,13 @@ BB_loadConfig() {
     global BB_PATTERN_MATCH_CONFIDENCE
     
     ; File system globals
-    global BB_CONFIG_FILE := A_ScriptDir "\bpat_config.ini"
+    global BB_CONFIG_FILE := A_ScriptDir "\bmat_config.ini"
     global BB_TEMPLATE_FOLDER := A_ScriptDir "\templates"
     global BB_BACKUP_TEMPLATE_FOLDER := A_ScriptDir "\backup_templates"
 
     if !FileExist(BB_CONFIG_FILE) {
         FileAppend(defaultIni, BB_CONFIG_FILE)
-        BB_updateStatusAndLog("Created default bpat_config.ini")
+        BB_updateStatusAndLog("Created default bmat_config.ini")
     }
 
     if !DirExist(BB_TEMPLATE_FOLDER)
@@ -1040,8 +1074,6 @@ BB_loadConfig() {
     BB_MAX_FAILED_INTERACTIONS := IniRead(BB_CONFIG_FILE, "Retries", "MAX_FAILED_INTERACTIONS", 5)
     BB_MAX_BUY_ATTEMPTS := IniRead(BB_CONFIG_FILE, "Retries", "MAX_BUY_ATTEMPTS", 6)
 
-    BB_ENABLE_LOGGING := IniRead(BB_CONFIG_FILE, "Logging", "ENABLE_LOGGING", true)
-    
     BB_updateStatusAndLog("Loaded configuration values from " . BB_CONFIG_FILE)
 }
 
@@ -1073,7 +1105,7 @@ BB_setupGUI() {
     
     ; Debug level dropdown
     BB_mainGui.Add("Text", "x20 y530 w80 h20", "Debug Level:")
-    BB_debugControls["levelDropdown"] := BB_mainGui.Add("DropDownList", "x100 y530 w60", ["1", "2", "3", "4", "5"])
+    BB_debugControls["levelDropdown"] := BB_mainGui.Add("DropDownList", "x100 y530 w60", ["1", "2", "3", "4", "5", "6"])
     BB_debugControls["levelDropdown"].Value := BB_DEBUG["level"]
     BB_debugControls["levelDropdown"].OnEvent("Change", BB_debugLevelChange)
     
@@ -1159,7 +1191,7 @@ BB_registerHotkeys() {
         BB_updateStatusAndLog("Registered all hotkeys successfully")
     } catch as err {
         BB_updateStatusAndLog("Error registering hotkeys: " . err.Message, true, true)
-        MsgBox("Error registering hotkeys: " . err.Message . "`n`nPlease check your hotkey configuration in bpat_config.ini", "Hotkey Error", 0x10)
+        MsgBox("Error registering hotkeys: " . err.Message . "`n`nPlease check your hotkey configuration in bmat_config.ini", "Hotkey Error", 0x10)
     }
 }
 
@@ -1248,28 +1280,7 @@ BB_ensureGameState(hwnd) {
     
     BB_updateStatusAndLog("Game state ensured: UI reset")
 }
-; Toggles the use of explosives in the mining automation.
-; Parameters:
-;   None
-; Returns: None
-; Notes:
-;   - Switches the use of explosives on and off
-;   - Updates the status log with the new state
-BB_toggleExplosives(*) {
-    global BB_ENABLE_EXPLOSIVES, BB_myGUI
-    BB_ENABLE_EXPLOSIVES := !BB_ENABLE_EXPLOSIVES
-    if BB_ENABLE_EXPLOSIVES {
-        SetTimer(BB_bombLoop, BB_BOMB_INTERVAL)
-        SetTimer(BB_tntCrateLoop, BB_TNT_CRATE_INTERVAL)
-        SetTimer(BB_tntBundleLoop, BB_TNT_BUNDLE_INTERVAL)
-        BB_updateStatusAndLog("Explosives Enabled - Timers started")
-    } else {
-        SetTimer(BB_bombLoop, 0)
-        SetTimer(BB_tntCrateLoop, 0)
-        SetTimer(BB_tntBundleLoop, 0)
-        BB_updateStatusAndLog("Explosives Disabled - Timers stopped")
-    }
-}
+
 ; Updates the list of active Roblox windows.
 ; Parameters:
 ;   None
@@ -1281,75 +1292,40 @@ BB_toggleExplosives(*) {
 ;   - Implements caching to avoid frequent window enumeration (5 second timeout)
 ;   - Updates the BB_active_windows global variable for use by other functions
 BB_updateActiveWindows() {
-    global BB_active_windows, BB_last_window_check, BB_DEBUG
+    global BB_active_windows, BB_last_window_check, BB_WINDOW_CHECK_INTERVAL
+    global BB_WINDOW_TITLE, BB_EXCLUDED_TITLES
     
-    ; Skip if checked recently (within 5 seconds)
-    currentTime := A_TickCount
-    if (currentTime - BB_last_window_check < 5000) {
-        BB_updateStatusAndLog("Window check skipped (recently checked)")
+    ; Check if we need to update (5 second cooldown)
+    if (A_TickCount - BB_last_window_check < BB_WINDOW_CHECK_INTERVAL)
         return BB_active_windows
-    }
     
-    ; Reset active windows list
+    BB_last_window_check := A_TickCount
     BB_active_windows := []
+    
+    ; Get all windows with matching title
+    windows := WinGetList("ahk_exe RobloxPlayerBeta.exe")
+    
+    ; Sort windows to prioritize active window
     activeHwnd := WinGetID("A")
-    foundTitles := ""
+    if (activeHwnd && WinGetProcessName(activeHwnd) = "RobloxPlayerBeta.exe")
+        BB_active_windows.Push(activeHwnd)
     
-    try {
-        winList := WinGetList()
-        
-        for _, hwnd in winList {
-            title := WinGetTitle(hwnd)
-            procName := WinGetProcessName(hwnd)
-            
-            ; Skip if the window has no title
-            if (title = "")
-                continue
-                
-            ; Skip any browser windows or other excluded titles
-            if BB_hasExcludedTitle(title)
-                continue
-                
-            ; Method 1: Match by exact name "Roblox" (standard title used by both launchers)
-            if (title = "Roblox") {
-                BB_active_windows.Push(hwnd)
-                foundTitles .= "Found: " . title . " (Process: " . procName . ")`n"
-                continue
+    ; Add other windows
+    for hwnd in windows {
+        if (hwnd != activeHwnd) {
+            title := WinGetTitle("ahk_id " . hwnd)
+            isExcluded := false
+            for excludedTitle in BB_EXCLUDED_TITLES {
+                if (InStr(title, excludedTitle)) {
+                    isExcluded := true
+                    break
+                }
             }
-            
-            ; Method 2: Check for RobloxPlayerBeta.exe process
-            if (InStr(procName, "RobloxPlayerBeta.exe")) {
+            if (!isExcluded)
                 BB_active_windows.Push(hwnd)
-                foundTitles .= "Found: " . title . " (Process: " . procName . ")`n"
-                continue
-            }
-            
-            ; Method 3: Various patterns used in Roblox titles
-            if (InStr(title, "Roblox") || 
-                InStr(title, "- Roblox") || 
-                RegExMatch(title, "Roblox$") || 
-                RegExMatch(title, "Roblox \(Place: \d+\)") ||
-                InStr(title, "experience") || 
-                InStr(title, "Experience")) {
-                
-                BB_active_windows.Push(hwnd)
-                foundTitles .= "Found: " . title . " (Process: " . procName . ")`n"
-            }
         }
-    } catch as err {
-        BB_updateStatusAndLog("Failed to retrieve window list: " . err.Message, true, true)
     }
     
-    ; Update debug info if enabled
-    if (BB_DEBUG["enabled"]) {
-        if (foundTitles != "")
-            BB_updateStatusAndLog(foundTitles)
-        else
-            BB_updateStatusAndLog("No Roblox windows detected")
-    }
-    
-    BB_last_window_check := currentTime
-    BB_updateStatusAndLog("Found " . BB_active_windows.Length . " valid Roblox windows")
     return BB_active_windows
 }
 ; Checks if a window title contains any excluded titles.
@@ -1471,13 +1447,10 @@ BB_checkForError(hwnd) {
         
         ; Basic error recovery actions
         errorActions := Map(
-            "DisableAutomine", () => (BB_disableAutomine(hwnd)),
             "TeleportToArea4", () => (BB_openTeleportMenu(hwnd), BB_teleportToArea("area_4_button", hwnd)),
             "Shopping", () => (BB_interactWithMerchant(hwnd)),
             "TeleportToArea5", () => (BB_openTeleportMenu(hwnd), BB_teleportToArea("area_5_button", hwnd)),
-            "EnableAutomine", () => (BB_enableAutomine(hwnd)),
-            "Idle", () => (SendInput("{" . BB_JUMP_HOTKEY . " down}"), Sleep(100), SendInput("{" . BB_JUMP_HOTKEY . " up}"), Sleep(500)),
-            "Mining", () => (SendInput("{" . BB_JUMP_HOTKEY . " down}"), Sleep(100), SendInput("{" . BB_JUMP_HOTKEY . " up}"), Sleep(500))
+            "Idle", () => (SendInput("{" . BB_JUMP_HOTKEY . " down}"), Sleep(100), SendInput("{" . BB_JUMP_HOTKEY . " up}"), Sleep(500))
         )
         
         action := errorActions.Has(BB_automationState) ? errorActions[BB_automationState] : errorActions["Idle"]
@@ -1597,50 +1570,53 @@ BB_resetGameState() {
 ;   - Retrieves the latest version from the version.txt file
 ;   - Compares the current version with the remote version
 BB_checkForUpdates() {
-    global BB_VERSION
-    versionUrl := "https://raw.githubusercontent.com/BeeBrained/BPAT/main/version.txt"
-    maxRetries := 3
-    retryDelay := 2000
-    
-    loop maxRetries {
-        try {
-            http := ComObject("WinHttp.WinHttpRequest.5.1")
-            http.Open("GET", versionUrl, false)
-            http.Send()
-            if (http.Status != 200) {
-                throw Error("HTTP status " . http.Status . " received")
-            }
-            latestVersion := Trim(http.ResponseText, " `t`r`n")
-            if (!RegExMatch(latestVersion, "^\d+\.\d+\.\d+$")) {
-                throw Error("Invalid version format: '" . latestVersion . "'")
-            }
-            BB_updateStatusAndLog("Current version: " . BB_VERSION . " | Remote version: " . latestVersion)
-            
-            ; Split versions into components for numeric comparison
-            currentParts := StrSplit(BB_VERSION, ".")
-            latestParts := StrSplit(latestVersion, ".")
-            
-            if (currentParts[1] > latestParts[1] 
-                || (currentParts[1] = latestParts[1] && currentParts[2] > latestParts[2])
-                || (currentParts[1] = latestParts[1] && currentParts[2] = latestParts[2] && currentParts[3] > latestParts[3])) {
-                BB_updateStatusAndLog("You're running a development version! 🛠️")
-                MsgBox("Oho! Running version " . BB_VERSION . " while latest release is " . latestVersion . "?`n`nYou must be one of the developers! 😎`nOr... did you find this in the future? 🤔", "Developer Version", 0x40)
-            } else if (latestVersion != BB_VERSION) {
-                BB_updateStatusAndLog("New version available: " . latestVersion . " (current: " . BB_VERSION . ")")
-                MsgBox("A new version (" . latestVersion . ") is available! Current version: " . BB_VERSION . ". Please update from the GitHub repository.", "Update Available", 0x40)
-            } else {
-                BB_updateStatusAndLog("Script is up to date (version: " . BB_VERSION . ")")
-            }
-            return
-        } catch as err {
-            BB_updateStatusAndLog("Failed to check for updates (attempt " . A_Index . "): " . err.Message, true, true)
-            if (A_Index < maxRetries) {
-                BB_updateStatusAndLog("Retrying in " . (retryDelay / 1000) . " seconds...")
-                Sleep(retryDelay)
+    try {
+        versionUrl := "https://raw.githubusercontent.com/xXGeminiXx/BeesPS99MasterAutomation/main/version.txt"
+        maxRetries := 3
+        retryDelay := 2000
+        
+        loop maxRetries {
+            try {
+                http := ComObject("WinHttp.WinHttpRequest.5.1")
+                http.Open("GET", versionUrl, false)
+                http.Send()
+                if (http.Status != 200) {
+                    throw Error("HTTP status " . http.Status . " received")
+                }
+                latestVersion := Trim(http.ResponseText, " `t`r`n")
+                if (!RegExMatch(latestVersion, "^\d+\.\d+\.\d+$")) {
+                    throw Error("Invalid version format: '" . latestVersion . "'")
+                }
+                BB_updateStatusAndLog("Current version: " . BB_VERSION . " | Remote version: " . latestVersion)
+                
+                ; Split versions into components for numeric comparison
+                currentParts := StrSplit(BB_VERSION, ".")
+                latestParts := StrSplit(latestVersion, ".")
+                
+                if (currentParts[1] > latestParts[1] 
+                    || (currentParts[1] = latestParts[1] && currentParts[2] > latestParts[2])
+                    || (currentParts[1] = latestParts[1] && currentParts[2] = latestParts[2] && currentParts[3] > latestParts[3])) {
+                    BB_updateStatusAndLog("You're running a development version! 🛠️")
+                    MsgBox("Oho! Running version " . BB_VERSION . " while latest release is " . latestVersion . "?`n`nYou must be one of the developers! 😎`nOr... did you find this in the future? 🤔", "Developer Version", 0x40)
+                } else if (latestVersion != BB_VERSION) {
+                    BB_updateStatusAndLog("New version available: " . latestVersion . " (current: " . BB_VERSION . ")")
+                    MsgBox("A new version (" . latestVersion . ") is available! Current version: " . BB_VERSION . ". Please update from the GitHub repository.", "Update Available", 0x40)
+                } else {
+                    BB_updateStatusAndLog("Script is up to date (version: " . BB_VERSION . ")")
+                }
+                return
+            } catch as err {
+                BB_updateStatusAndLog("Failed to check for updates (attempt " . A_Index . "): " . err.Message, true, true)
+                if (A_Index < maxRetries) {
+                    BB_updateStatusAndLog("Retrying in " . (retryDelay / 1000) . " seconds...")
+                    Sleep(retryDelay)
+                }
             }
         }
+        BB_updateStatusAndLog("Failed to check for updates after " . maxRetries . " attempts", true, true)
+    } catch as err {
+        BB_updateStatusAndLog("Failed to check for updates: " . err.Message, true, true)
     }
-    BB_updateStatusAndLog("Failed to check for updates after " . maxRetries . " attempts", true, true)
 }
 
 ; Opens the teleport menu in the game 
@@ -1724,27 +1700,12 @@ BB_openTeleportMenu(hwnd) {
         BB_updateStatusAndLog("Clicking FALLBACK teleport position at x=" . clickX . ", y=" . clickY)
     
     BB_clickAt(clickX, clickY)
-    
-    ; Wait for teleport menu to appear
     Sleep(3000)
-    
-    ; Check if the click triggered automining toggle (important movement check)
-    if (BB_checkAutofarming(hwnd) != BB_isAutofarming) {
-        ; If automining state changed, it means we didn't hit teleport
-        BB_updateStatusAndLog("Warning: Automining state changed - teleport click missed", true)
-        
-        ; Try clicking EVEN HIGHER - absolute top of window
-        fallbackX := clickX
-        fallbackY := winY + 40  ; Extremely top area - almost touching window border
-        
-        BB_updateStatusAndLog("EMERGENCY FALLBACK: Trying position at absolute top of window: x=" . fallbackX . ", y=" . fallbackY)
-        BB_clickAt(fallbackX, fallbackY)
-        
-        ; Wait for teleport menu to appear
-        Sleep(3000)
-    }
-    
-    BB_updateStatusAndLog("Teleport menu should now be open")
+
+    ; Wait for any animations or transitions
+    Sleep(1000)
+
+    BB_updateStatusAndLog("Completed teleport attempt")
     return true
 }
 
@@ -2503,15 +2464,10 @@ BB_debugHotkeyHandler(action) {
             isHatchMenu := BB_detectHatchMenu(hwnd, true)
             BB_updateStatusAndLog("Debug: Hatch menu detection result: " . (isHatchMenu ? "Found" : "Not Found"))
         
-        case "automine":
-            isAutomating := BB_checkAutomating(hwnd)
-            BB_updateStatusAndLog("Debug: Automation status: " . (isAutomating ? "ON" : "OFF"))
-        
         case "status":
             statusMsg := "Current State: " . BB_automationState . "`n"
             statusMsg .= "Running: " . (BB_running ? "Yes" : "No") . "`n"
             statusMsg .= "Paused: " . (BB_paused ? "Yes" : "No") . "`n"
-            statusMsg .= "Automating: " . (BB_isAutomating ? "Yes" : "No") . "`n"
             statusMsg .= "Current Location: " . BB_currentLocation . "`n"
             MsgBox(statusMsg, "Automation Status", 0x40)
         
@@ -2634,4 +2590,303 @@ BB_handleError() {
 BB_resetErrorState() {
     BB_ERROR_RETRY_ATTEMPTS := 0
     BB_FAILED_INTERACTION_COUNT := 0
+}
+
+; ===================== UTILITY FUNCTIONS =====================
+
+; Cleanup function called when script exits
+BB_cleanup(*) {
+    global BB_running, BB_paused, BB_automationState
+    
+    BB_running := false
+    BB_paused := false
+    BB_automationState := "Idle"
+    
+    ; Stop all timers
+    SetTimer(BB_automationLoop, 0)
+    SetTimer(BB_reconnectCheckLoop, 0)
+    SetTimer(BB_antiAfkLoop, 0)
+    
+    ; Save any pending state
+    BB_saveConfig()
+    
+    BB_updateStatusAndLog("Cleanup completed")
+}
+
+; Creates the default configuration file
+BB_createDefaultConfig() {
+    global BB_CONFIG_FILE, defaultIni
+    
+    if FileExist(BB_CONFIG_FILE) {
+        BB_updateStatusAndLog("Config file already exists, skipping creation")
+        return
+    }
+    
+    try {
+        FileAppend(defaultIni, BB_CONFIG_FILE)
+        BB_updateStatusAndLog("Created default config file at: " . BB_CONFIG_FILE)
+    } catch as err {
+        BB_updateStatusAndLog("Error creating default config: " . err.Message, true, true)
+        MsgBox("Failed to create default config file: " . err.Message, "Config Error", 0x10)
+    }
+}
+
+; Logs a message to the log file and optionally to the GUI
+BB_log(message, level := 1) {
+    global BB_ENABLE_LOGGING, BB_LOG_FILE, BB_DEBUG
+    
+    if (!BB_ENABLE_LOGGING)
+        return
+        
+    if (BB_DEBUG["enabled"] && level > BB_DEBUG["level"])
+        return
+        
+    timestamp := FormatTime(, "yyyy-MM-dd HH:mm:ss")
+    logMessage := timestamp . " [" . level . "] " . message . "`n"
+    
+    try {
+        FileAppend(logMessage, BB_LOG_FILE)
+    } catch as err {
+        ; If we can't write to the log file, at least show the message
+        OutputDebug(message)
+    }
+}
+
+; Sends a hotkey with proper down/up events
+BB_sendHotkeyWithDownUp(hotkey) {
+    try {
+        SendInput("{" . hotkey . " down}")
+        Sleep(50)  ; Small delay between down and up
+        SendInput("{" . hotkey . " up}")
+        return true
+    } catch as err {
+        BB_updateStatusAndLog("Error sending hotkey " . hotkey . ": " . err.Message, true, true)
+        return false
+    }
+}
+
+; Scales coordinates based on screen resolution
+BB_scaleCoordinates(x, y) {
+    global BB_SCALE_X, BB_SCALE_Y
+    
+    return [
+        Round(x * BB_SCALE_X),
+        Round(y * BB_SCALE_Y)
+    ]
+}
+
+; Calculates the distance between two colors in RGB space
+ColorDistance(color1, color2) {
+    r1 := (color1 >> 16) & 0xFF
+    g1 := (color1 >> 8) & 0xFF
+    b1 := color1 & 0xFF
+    
+    r2 := (color2 >> 16) & 0xFF
+    g2 := (color2 >> 8) & 0xFF
+    b2 := color2 & 0xFF
+    
+    return Sqrt((r2-r1)**2 + (g2-g1)**2 + (b2-b1)**2)
+}
+
+; Gets list of available config presets
+BB_getConfigPresets() {
+    global BB_CONFIG_DIR
+    
+    presets := ["Default"]
+    
+    if !DirExist(BB_CONFIG_DIR)
+        return presets
+        
+    try {
+        loop files BB_CONFIG_DIR "\*.ini" {
+            presetName := SubStr(A_LoopFileName, 1, -4)  ; Remove .ini extension
+            if (presetName != "config")
+                presets.Push(presetName)
+        }
+    } catch as err {
+        BB_updateStatusAndLog("Error reading config presets: " . err.Message, true, true)
+    }
+    
+    return presets
+}
+
+; Handles save config button click
+BB_saveConfigButtonClick(*) {
+    global BB_configDropdown, BB_CONFIG_FILE
+    
+    selectedPreset := BB_configDropdown.Text
+    if (selectedPreset = "Default") {
+        BB_updateStatusAndLog("Cannot save to Default preset", true)
+        return
+    }
+    
+    try {
+        if !DirExist(BB_CONFIG_DIR)
+            DirCreate(BB_CONFIG_DIR)
+            
+        targetFile := BB_CONFIG_DIR "\" . selectedPreset . ".ini"
+        FileCopy(BB_CONFIG_FILE, targetFile, true)
+        BB_updateStatusAndLog("Saved config to preset: " . selectedPreset)
+    } catch as err {
+        BB_updateStatusAndLog("Error saving config preset: " . err.Message, true, true)
+        MsgBox("Failed to save config preset: " . err.Message, "Save Error", 0x10)
+    }
+}
+
+; Handles reset config button click
+BB_resetConfigButtonClick(*) {
+    global BB_CONFIG_FILE
+    
+    try {
+        FileDelete(BB_CONFIG_FILE)
+        BB_createDefaultConfig()
+        BB_loadConfig()
+        BB_updateStatusAndLog("Reset to default configuration")
+    } catch as err {
+        BB_updateStatusAndLog("Error resetting config: " . err.Message, true, true)
+        MsgBox("Failed to reset configuration: " . err.Message, "Reset Error", 0x10)
+    }
+}
+
+; Handles load config button click
+BB_loadConfigButtonClick(*) {
+    global BB_configDropdown, BB_CONFIG_FILE, BB_CONFIG_DIR
+    
+    selectedPreset := BB_configDropdown.Text
+    if (selectedPreset = "Default") {
+        BB_loadConfig()  ; Reload default config
+        BB_updateStatusAndLog("Loaded default config")
+        return
+    }
+    
+    try {
+        sourceFile := BB_CONFIG_DIR "\" . selectedPreset . ".ini"
+        if !FileExist(sourceFile) {
+            BB_updateStatusAndLog("Config preset not found: " . selectedPreset, true)
+            return
+        }
+        
+        FileCopy(sourceFile, BB_CONFIG_FILE, true)
+        BB_loadConfig()  ; Reload the config
+        BB_updateStatusAndLog("Loaded config preset: " . selectedPreset)
+    } catch as err {
+        BB_updateStatusAndLog("Error loading config preset: " . err.Message, true, true)
+        MsgBox("Failed to load config preset: " . err.Message, "Load Error", 0x10)
+    }
+}
+
+; Updates GUI elements with current state
+BB_updateGUI() {
+    global BB_running, BB_paused, BB_automationState, BB_active_windows
+    global BB_validTemplates, BB_totalTemplates, BB_FAILED_INTERACTION_COUNT
+    global BB_lastError, BB_mainGui
+    
+    if (!IsSet(BB_mainGui) || !IsObject(BB_mainGui))
+        return
+        
+    try {
+        BB_mainGui["Status"].Text := (BB_running ? (BB_paused ? "Paused" : "Running") : "Idle")
+        BB_mainGui["Status"].SetFont(BB_running ? (BB_paused ? "cOrange" : "cGreen") : "cRed")
+        BB_mainGui["WindowCount"].Text := BB_active_windows.Length
+        BB_mainGui["AutomationStatus"].Text := (BB_running ? (BB_paused ? "PAUSED" : "RUNNING") : "OFF")
+        BB_mainGui["AutomationStatus"].SetFont(BB_running ? (BB_paused ? "cOrange" : "cGreen") : "cRed")
+        BB_mainGui["TemplateStatus"].Text := BB_validTemplates . "/" . BB_totalTemplates
+        BB_mainGui["TemplateStatus"].SetFont(BB_validTemplates = BB_totalTemplates ? "cGreen" : "cRed")
+        BB_mainGui["CurrentState"].Text := BB_automationState
+        BB_mainGui["FailedCount"].Text := BB_FAILED_INTERACTION_COUNT
+        BB_mainGui["LastError"].Text := BB_lastError
+        BB_mainGui["LastError"].SetFont(BB_lastError != "None" ? "cRed" : "cBlack")
+    } catch as err {
+        ; Silently fail GUI updates if there's an error
+        ; This prevents script crashes if GUI elements aren't ready
+    }
+}
+
+; Captures a screenshot for debugging purposes
+BB_captureScreenForDebug(hwnd, filename) {
+    if (!hwnd || !WinExist("ahk_id " . hwnd))
+        return false
+        
+    try {
+        WinGetPos(&x, &y, &w, &h, "ahk_id " . hwnd)
+        if !DirExist(A_ScriptDir . "\debug")
+            DirCreate(A_ScriptDir . "\debug")
+            
+        ; Use AutoHotkey v2's screenshot method
+        BB_mainGui.Screenshot(A_ScriptDir . "\debug\" . filename, x . "|" . y . "|" . w . "|" . h)
+        return true
+    } catch as err {
+        BB_updateStatusAndLog("Error capturing debug screenshot: " . err.Message, true, true)
+        return false
+    }
+}
+
+; Detects if the hatch menu is open
+BB_detectHatchMenu(hwnd, debugMode := false) {
+    if (!hwnd || !WinExist("ahk_id " . hwnd))
+        return false
+        
+    try {
+        ; This is a stub for future implementation
+        ; Will be implemented when hatching functionality is added
+        return false
+    } catch as err {
+        BB_updateStatusAndLog("Error detecting hatch menu: " . err.Message, true, true)
+        return false
+    }
+}
+
+; Stub for merchant interaction - to be implemented in future
+BB_interactWithMerchant(hwnd) {
+    ; This is a stub for future merchant functionality
+    BB_updateStatusAndLog("Merchant interaction not yet implemented")
+    return false
+}
+
+; Saves current configuration to file
+BB_saveConfig() {
+    global BB_CONFIG_FILE, BB_ENABLE_LOGGING, BB_WINDOW_TITLE, BB_EXCLUDED_TITLES
+    global BB_CLICK_DELAY_MIN, BB_CLICK_DELAY_MAX, BB_INTERACTION_DURATION, BB_CYCLE_INTERVAL
+    global BB_TEMPLATE_FOLDER, BB_BACKUP_TEMPLATE_FOLDER, BB_TEMPLATE_RETRIES, BB_MAX_FAILED_INTERACTIONS
+    global BB_ANTI_AFK_INTERVAL, BB_RECONNECT_CHECK_INTERVAL
+    global BB_SAFE_MODE
+    global BB_TELEPORT_HOTKEY, BB_INVENTORY_HOTKEY, BB_START_STOP_HOTKEY, BB_PAUSE_HOTKEY, BB_EXIT_HOTKEY, BB_JUMP_HOTKEY
+    
+    try {
+        ; Save timing values
+        IniWrite(BB_INTERACTION_DURATION, BB_CONFIG_FILE, "Timing", "INTERACTION_DURATION")
+        IniWrite(BB_CYCLE_INTERVAL, BB_CONFIG_FILE, "Timing", "CYCLE_INTERVAL")
+        IniWrite(BB_CLICK_DELAY_MIN, BB_CONFIG_FILE, "Timing", "CLICK_DELAY_MIN")
+        IniWrite(BB_CLICK_DELAY_MAX, BB_CONFIG_FILE, "Timing", "CLICK_DELAY_MAX")
+        IniWrite(BB_ANTI_AFK_INTERVAL, BB_CONFIG_FILE, "Timing", "ANTI_AFK_INTERVAL")
+        IniWrite(BB_RECONNECT_CHECK_INTERVAL, BB_CONFIG_FILE, "Timing", "RECONNECT_CHECK_INTERVAL")
+        
+        ; Save window settings
+        IniWrite(BB_WINDOW_TITLE, BB_CONFIG_FILE, "Window", "WINDOW_TITLE")
+        IniWrite(Array.Join(BB_EXCLUDED_TITLES, ","), BB_CONFIG_FILE, "Window", "EXCLUDED_TITLES")
+        
+        ; Save features
+        IniWrite(BB_SAFE_MODE, BB_CONFIG_FILE, "Features", "SAFE_MODE")
+        
+        ; Save hotkeys
+        IniWrite(BB_TELEPORT_HOTKEY, BB_CONFIG_FILE, "Hotkeys", "TELEPORT_HOTKEY")
+        IniWrite(BB_INVENTORY_HOTKEY, BB_CONFIG_FILE, "Hotkeys", "INVENTORY_HOTKEY")
+        IniWrite(BB_START_STOP_HOTKEY, BB_CONFIG_FILE, "Hotkeys", "START_STOP_HOTKEY")
+        IniWrite(BB_PAUSE_HOTKEY, BB_CONFIG_FILE, "Hotkeys", "PAUSE_HOTKEY")
+        IniWrite(BB_EXIT_HOTKEY, BB_CONFIG_FILE, "Hotkeys", "EXIT_HOTKEY")
+        IniWrite(BB_JUMP_HOTKEY, BB_CONFIG_FILE, "Hotkeys", "JUMP_HOTKEY")
+        
+        ; Save retry settings
+        IniWrite(BB_TEMPLATE_RETRIES, BB_CONFIG_FILE, "Retries", "TEMPLATE_RETRIES")
+        IniWrite(BB_MAX_FAILED_INTERACTIONS, BB_CONFIG_FILE, "Retries", "MAX_FAILED_INTERACTIONS")
+        
+        ; Save logging settings
+        IniWrite(BB_ENABLE_LOGGING, BB_CONFIG_FILE, "Logging", "ENABLE_LOGGING")
+        
+        BB_updateStatusAndLog("Saved configuration to " . BB_CONFIG_FILE)
+        return true
+    } catch as err {
+        BB_updateStatusAndLog("Error saving configuration: " . err.Message, true, true)
+        return false
+    }
 }
